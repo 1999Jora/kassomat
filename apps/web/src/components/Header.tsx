@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAppStore } from '../store/useAppStore';
 import { formatTime } from '../lib/formatters';
@@ -25,17 +26,23 @@ function StatusDot({ label, online }: { label: string; online: boolean }) {
   );
 }
 
-function getAdminUrl(): string {
-  const envUrl = import.meta.env['VITE_DASHBOARD_URL'] as string | undefined;
-  if (envUrl) return envUrl;
-  if (window.location.port === '57445') return 'http://localhost:51820';
-  return 'http://localhost:5174';
-}
-
 export default function Header({ onOrdersClick }: HeaderProps) {
   const { lock, pendingOrders } = useAppStore();
   const { theme, toggleTheme } = useTheme();
+  const navigate = useNavigate();
   const [now, setNow] = useState(new Date());
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30_000);
@@ -82,19 +89,40 @@ export default function Header({ onOrdersClick }: HeaderProps) {
           <p className="text-[10px] text-[#6b7280] font-mono">{formatTime(now)}</p>
         </div>
 
-        {/* Admin link */}
-        <a
-          href={getAdminUrl()}
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Admin-Bereich öffnen"
-          className="min-w-[40px] min-h-[40px] w-10 h-10 rounded-xl bg-white/[0.05] hover:bg-white/10 active:bg-white/5 flex items-center justify-center transition-colors border border-white/[0.06]"
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-          </svg>
-        </a>
+        {/* Navigation menu */}
+        <div ref={menuRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setMenuOpen((o) => !o)}
+            title="Menü"
+            className="min-w-[40px] min-h-[40px] w-10 h-10 rounded-xl bg-white/[0.05] hover:bg-white/10 active:bg-white/5 flex items-center justify-center transition-colors border border-white/[0.06]"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-12 w-48 bg-[#0e1115] border border-white/[0.08] rounded-xl shadow-2xl z-50 overflow-hidden">
+              {[
+                { label: '🧾 POS', to: '/' },
+                { label: '📊 Übersicht', to: '/dashboard' },
+                { label: '⚙️ Einstellungen', to: '/settings' },
+                { label: '📤 DEP Export', to: '/dep-export' },
+              ].map((item) => (
+                <button
+                  key={item.to}
+                  type="button"
+                  onClick={() => { navigate(item.to); setMenuOpen(false); }}
+                  className="w-full text-left px-4 py-3 text-sm text-white/70 hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Theme toggle */}
         <button
