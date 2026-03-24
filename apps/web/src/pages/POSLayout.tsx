@@ -23,21 +23,32 @@ export default function POSLayout() {
     <div className="h-screen bg-[#080a0c] text-white flex flex-col overflow-hidden font-mono">
       <Header onOrdersClick={() => setOrdersOpen((o) => !o)} />
 
-      {/* Desktop: 3 columns | Tablet: 2 columns | Mobile: tabs */}
+      {/* Desktop: 3 columns | Tablet: Articles + right panel (Cart+Payment stacked) | Mobile: tabs */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Articles - always visible on md+, on mobile only when tab=articles */}
         <div className={`${mobileTab === 'articles' ? 'flex' : 'hidden'} md:flex flex-1 min-w-0 border-r border-white/[0.06] overflow-hidden flex-col`}>
           <ArticleGrid />
         </div>
 
-        {/* Cart - on mobile only when tab=cart, on tablet hidden, on desktop visible */}
-        <div className={`${mobileTab === 'cart' ? 'flex' : 'hidden'} lg:flex w-full lg:w-[280px] xl:w-[320px] border-r border-white/[0.06] overflow-hidden shrink-0 flex-col`}>
+        {/* Mobile: Cart tab */}
+        <div className={`${mobileTab === 'cart' ? 'flex' : 'hidden'} md:hidden w-full overflow-hidden flex-col`}>
           <Cart />
         </div>
 
-        {/* Payment - on mobile only when tab=payment, on tablet hidden, on desktop visible */}
-        <div className={`${mobileTab === 'payment' ? 'flex' : 'hidden'} lg:flex w-full lg:w-[256px] xl:w-[288px] overflow-hidden shrink-0 flex-col bg-[#080a0c]`}>
+        {/* Mobile: Payment tab */}
+        <div className={`${mobileTab === 'payment' ? 'flex' : 'hidden'} md:hidden w-full overflow-hidden flex-col`}>
           <PaymentPanel />
+        </div>
+
+        {/* Tablet (md-lg): Cart + Payment stacked vertically in right panel */}
+        {/* Desktop (lg+): Cart + Payment side by side */}
+        <div className="hidden md:flex flex-col lg:flex-row shrink-0 w-[300px] lg:w-auto">
+          <div className="flex flex-col lg:w-[280px] xl:w-[320px] border-b border-white/[0.06] lg:border-b-0 lg:border-r lg:border-white/[0.06] overflow-hidden flex-1 lg:flex-none">
+            <Cart />
+          </div>
+          <div className="flex flex-col lg:w-[256px] xl:w-[288px] overflow-hidden shrink-0 lg:flex-none">
+            <PaymentPanel />
+          </div>
         </div>
       </div>
 
