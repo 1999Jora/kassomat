@@ -33,4 +33,4 @@ RUN pnpm --filter api build
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "cd apps/api && npx prisma migrate deploy && node dist/server.js"]
+CMD ["sh", "-c", "cd apps/api && npx prisma migrate deploy && node dist/apps/api/src/server.js"]
