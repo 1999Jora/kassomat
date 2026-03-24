@@ -37,9 +37,16 @@ export async function buildServer() {
 
   // ---- Plugins ----
   await fastify.register(cors, {
-    origin: process.env['NODE_ENV'] === 'development'
-      ? true
-      : (process.env['CORS_ORIGIN'] ?? 'http://localhost:5173').split(','),
+    origin: (origin, callback) => {
+      const allowed = (process.env['CORS_ORIGIN'] ?? 'http://localhost:5173')
+        .split(',')
+        .map(o => o.trim());
+      if (!origin || process.env['NODE_ENV'] === 'development' || allowed.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'), false);
+      }
+    },
     credentials: true,
   });
 
