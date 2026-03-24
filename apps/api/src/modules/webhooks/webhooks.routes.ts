@@ -158,6 +158,10 @@ export async function webhooksRoutes(fastify: FastifyInstance): Promise<void> {
             // Wix webhooks wrap it in { data: { orderId, lineItems, ... } }.
             // Normalise both formats into the native format before passing to service.
             const body = request.body as Record<string, unknown>;
+
+            // Log what Wix actually sent for debugging
+            request.log.info({ body, keys: Object.keys(body ?? {}) }, '[Wix] Received payload');
+
             let normalised: unknown = body;
 
             if (!body?.['data'] && (body?.['_id'] || body?.['lineItems'])) {
