@@ -174,7 +174,7 @@ function ATrustTab({ settings }: { settings: TenantSettings }) {
   const qc = useQueryClient();
   const atrust = settings.atrust;
 
-  const [apiKey, setApiKey] = useState(atrust?.apiKey ?? '');
+  const [apiKey, setApiKey] = useState('');
   const [environment, setEnvironment] = useState<'test' | 'production'>(
     atrust?.environment ?? 'test',
   );
@@ -265,7 +265,7 @@ function LieferandoTab({ settings }: { settings: TenantSettings }) {
   const qc = useQueryClient();
   const lieferando = settings.lieferando;
 
-  const [apiKey, setApiKey] = useState(lieferando?.apiKey ?? '');
+  const [apiKey, setApiKey] = useState('');
   const [restaurantId, setRestaurantId] = useState(lieferando?.restaurantId ?? '');
   const [isActive, setIsActive] = useState(lieferando?.isActive ?? false);
 
@@ -357,7 +357,7 @@ function WixTab({ settings }: { settings: TenantSettings }) {
   const qc = useQueryClient();
   const wix = settings.wix;
 
-  const [apiKey, setApiKey] = useState(wix?.apiKey ?? '');
+  const [apiKey, setApiKey] = useState('');
   const [siteId, setSiteId] = useState(wix?.siteId ?? '');
   const [isActive, setIsActive] = useState(wix?.isActive ?? false);
   const [defaultDelivery, setDefaultDelivery] = useState<'cash' | 'online'>(
