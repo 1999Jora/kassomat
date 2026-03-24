@@ -1,25 +1,131 @@
+import { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { formatCents, formatRelative } from '../lib/formatters';
 import type { IncomingOrder } from '@kassomat/types';
+import { jsPDF } from 'jspdf';
 
-interface Props {
-  onClose: () => void;
+// ── Thermal receipt PDF ───────────────────────────────────────────────────────
+
+export function printThermalReceipt(order: IncomingOrder, tenantName = 'Spätii Innsbruck'): void {
+  const W = 80;          // 80 mm roll width
+  const MARGIN = 5;
+  const PRINT_W = W - MARGIN * 2;
+  const LINE_H = 5;
+  const COL_R = W - MARGIN;
+
+  // Estimate height
+  const estimatedLines = 20 + order.items.length * 2 + (order.deliveryAddress ? 5 : 0);
+  const H = Math.max(120, estimatedLines * LINE_H + 20);
+
+  const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'portrait' });
+
+  let y = 8;
+
+  function ctr(text: string, size: number, bold = false) {
+    doc.setFont('courier', bold ? 'bold' : 'normal');
+    doc.setFontSize(size);
+    doc.text(text, W / 2, y, { align: 'center' });
+    y += LINE_H;
+  }
+
+  function row(left: string, right: string, size = 8, bold = false) {
+    doc.setFont('courier', bold ? 'bold' : 'normal');
+    doc.setFontSize(size);
+    doc.text(left, MARGIN, y);
+    doc.text(right, COL_R, y, { align: 'right' });
+    y += LINE_H;
+  }
+
+  function divider(dashed = false) {
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(7);
+    const char = dashed ? '-' : '=';
+    const count = Math.floor(PRINT_W / doc.getTextWidth(char));
+    doc.text(char.repeat(count), MARGIN, y);
+    y += 4;
+  }
+
+  function txt(text: string, size = 8, bold = false, indent = 0) {
+    doc.setFont('courier', bold ? 'bold' : 'normal');
+    doc.setFontSize(size);
+    doc.text(text, MARGIN + indent, y);
+    y += LINE_H;
+  }
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  ctr(tenantName.toUpperCase(), 10, true);
+  y += 1;
+  divider();
+
+  // Date + order number
+  const dateStr = new Date(order.receivedAt).toLocaleString('de-AT', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+  txt(`Datum:  ${dateStr}`, 7);
+  txt(`Quelle: ${order.source === 'wix' ? 'Wix Online Shop' : 'Lieferando'}`, 7);
+  txt(`Bon-Nr: #${order.externalId}`, 7);
+
+  const payLabel = order.paymentMethod === 'online_paid'
+    ? 'Online bezahlt'
+    : 'Bar bei Lieferung';
+  txt(`Zahlung: ${payLabel}`, 7);
+  y += 1;
+
+  // ── Customer ──────────────────────────────────────────────────────────────
+  if (order.customer) {
+    divider(true);
+    txt('KUNDE:', 7, true);
+    txt(order.customer.name, 8, true, 2);
+    if (order.customer.phone) txt(`Tel: ${order.customer.phone}`, 7, false, 2);
+    if (order.customer.email) txt(order.customer.email, 6, false, 2);
+    y += 1;
+  }
+
+  // ── Delivery address ──────────────────────────────────────────────────────
+  if (order.deliveryAddress) {
+    divider(true);
+    txt('LIEFERADRESSE:', 7, true);
+    txt(order.deliveryAddress.street, 7, false, 2);
+    txt(`${order.deliveryAddress.zip} ${order.deliveryAddress.city}`, 7, false, 2);
+    if (order.deliveryAddress.notes) txt(`Hinweis: ${order.deliveryAddress.notes}`, 6, false, 2);
+    y += 1;
+  }
+
+  // ── Items ─────────────────────────────────────────────────────────────────
+  divider();
+  txt('ARTIKEL', 7, true);
+  y += 1;
+  for (const item of order.items) {
+    row(`${item.quantity}x ${item.name}`, formatCents(item.totalPrice), 8);
+  }
+  y += 1;
+
+  // ── Total ─────────────────────────────────────────────────────────────────
+  divider();
+  row('GESAMT', formatCents(order.totalAmount), 10, true);
+  y += 1;
+
+  // ── VAT note ─────────────────────────────────────────────────────────────
+  divider(true);
+  const vatAmt = Math.round(order.totalAmount * 20 / 120);
+  txt(`inkl. 20% MwSt.: ${formatCents(vatAmt)}`, 6);
+  y += 2;
+
+  // ── Footer ────────────────────────────────────────────────────────────────
+  divider();
+  ctr('Danke fur Ihre Bestellung!', 8, true);
+  ctr('www.spaetii-innsbruck.at', 6);
+  y += 2;
+
+  doc.save(`Bon_${order.externalId}.pdf`);
 }
 
-const SOURCE_CONFIG: Record<
-  string,
-  { label: string; cls: string; icon: string }
-> = {
-  lieferando: {
-    label: 'Lieferando',
-    cls: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-    icon: '🍕',
-  },
-  wix: {
-    label: 'Wix',
-    cls: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-    icon: '🛒',
-  },
+// ── Source + status config ────────────────────────────────────────────────────
+
+const SOURCE_CONFIG: Record<string, { label: string; cls: string; icon: string }> = {
+  lieferando: { label: 'Lieferando', cls: 'bg-orange-500/10 text-orange-400 border-orange-500/20', icon: '🍕' },
+  wix: { label: 'Wix', cls: 'bg-blue-500/10 text-blue-400 border-blue-500/20', icon: '🛒' },
 };
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
@@ -30,20 +136,42 @@ const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
   cancelled: { label: 'Storniert', cls: 'text-red-400 bg-red-400/10' },
 };
 
-export default function OrderNotification({ onClose }: Props) {
-  const { pendingOrders, removePendingOrder, addToCart, clearCart } = useAppStore();
+interface Props { onClose: () => void; }
 
-  function loadOrderToCart(order: IncomingOrder) {
-    clearCart();
-    order.items.forEach((item) => {
-      addToCart({
-        productId: `ext-${item.externalId}`,
-        name: item.name,
-        price: item.unitPrice,
-        vatRate: 20, // default — real mapping is server-side
+export default function OrderNotification({ onClose }: Props) {
+  const { pendingOrders, removePendingOrder } = useAppStore();
+  const [printing, setPrinting] = useState<string | null>(null);
+
+  async function handlePrintBon(order: IncomingOrder) {
+    setPrinting(order.id);
+    try {
+      const token = localStorage.getItem('kassomat_access_token');
+      const apiUrl = import.meta.env['VITE_API_URL'] ?? '';
+      const paymentMethod = order.paymentMethod === 'online_paid' ? 'online' : 'cash';
+
+      await fetch(`${apiUrl}/orders/${order.id}/receipt`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          payment: {
+            method: paymentMethod,
+            amountPaid: order.totalAmount,
+            tip: 0,
+          },
+        }),
       });
-    });
-    onClose();
+
+      // Always generate PDF regardless of receipt creation result
+      printThermalReceipt(order);
+    } catch {
+      // Still generate PDF even if API fails
+      printThermalReceipt(order);
+    } finally {
+      setPrinting(null);
+    }
   }
 
   function rejectOrder(id: string) {
@@ -53,10 +181,7 @@ export default function OrderNotification({ onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-start sm:justify-end">
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       {/* Panel */}
       <div className="relative w-full sm:w-[22rem] sm:m-4 sm:mt-[72px] bg-[#0e1115] border border-white/[0.08] rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[82vh] flex flex-col">
@@ -68,15 +193,7 @@ export default function OrderNotification({ onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06] shrink-0">
           <div className="flex items-center gap-2">
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              className="text-[#6b7280]"
-            >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#6b7280]">
               <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
             </svg>
             <span className="text-sm font-semibold">Eingehende Bestellungen</span>
@@ -91,14 +208,7 @@ export default function OrderNotification({ onClose }: Props) {
             onClick={onClose}
             className="min-w-[28px] min-h-[28px] w-7 h-7 rounded-lg bg-white/[0.05] hover:bg-white/10 flex items-center justify-center transition-colors"
           >
-            <svg
-              width="11"
-              height="11"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-            >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
@@ -110,15 +220,7 @@ export default function OrderNotification({ onClose }: Props) {
           {pendingOrders.length === 0 ? (
             <div className="py-16 flex flex-col items-center gap-3 text-[#6b7280]">
               <div className="w-14 h-14 rounded-2xl bg-white/[0.03] border border-white/[0.05] flex items-center justify-center">
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.4"
-                  className="opacity-40"
-                >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" className="opacity-40">
                   <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
                 </svg>
               </div>
@@ -126,20 +228,12 @@ export default function OrderNotification({ onClose }: Props) {
             </div>
           ) : (
             pendingOrders.map((order) => {
-              const src = SOURCE_CONFIG[order.source] ?? {
-                label: order.source,
-                cls: 'bg-white/5 text-white/60 border-white/10',
-                icon: '📦',
-              };
-              const statusCfg =
-                STATUS_CONFIG[order.status] ?? STATUS_CONFIG.pending;
+              const src = SOURCE_CONFIG[order.source] ?? { label: order.source, cls: 'bg-white/5 text-white/60 border-white/10', icon: '📦' };
+              const statusCfg = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.pending;
               const payIsOnline = order.paymentMethod === 'online_paid';
 
               return (
-                <div
-                  key={order.id}
-                  className="bg-[#080a0c] rounded-xl border border-white/[0.06] overflow-hidden"
-                >
+                <div key={order.id} className="bg-[#080a0c] rounded-xl border border-white/[0.06] overflow-hidden">
                   {/* Order header */}
                   <div className="px-3 pt-3 pb-2">
                     <div className="flex items-start justify-between gap-2 mb-1.5">
@@ -150,13 +244,7 @@ export default function OrderNotification({ onClose }: Props) {
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusCfg.cls}`}>
                           {statusCfg.label}
                         </span>
-                        <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                            payIsOnline
-                              ? 'bg-[#00e87a]/10 text-[#00e87a]'
-                              : 'bg-white/5 text-white/50'
-                          }`}
-                        >
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${payIsOnline ? 'bg-[#00e87a]/10 text-[#00e87a]' : 'bg-white/5 text-white/50'}`}>
                           {payIsOnline ? 'Bereits bezahlt' : 'Bar bei Lieferung'}
                         </span>
                       </div>
@@ -165,8 +253,7 @@ export default function OrderNotification({ onClose }: Props) {
                       </span>
                     </div>
                     <p className="text-[10px] text-[#6b7280] font-mono">
-                      #{order.externalId}{' '}
-                      <span className="mx-1 opacity-30">·</span>
+                      #{order.externalId} <span className="mx-1 opacity-30">·</span>
                       {formatRelative(new Date(order.receivedAt))}
                     </p>
                   </div>
@@ -177,20 +264,13 @@ export default function OrderNotification({ onClose }: Props) {
                       {order.customer && (
                         <p className="text-xs text-white/60">
                           <span className="text-white/80 font-medium">{order.customer.name}</span>
-                          {order.customer.phone && (
-                            <span className="text-[#6b7280] ml-1.5">{order.customer.phone}</span>
-                          )}
-                          {order.customer.email && (
-                            <span className="text-[#6b7280] ml-1.5 text-[10px]">{order.customer.email}</span>
-                          )}
+                          {order.customer.phone && <span className="text-[#6b7280] ml-1.5">{order.customer.phone}</span>}
                         </p>
                       )}
                       {order.deliveryAddress && (
                         <p className="text-[11px] text-[#6b7280]">
                           📍 {order.deliveryAddress.street}, {order.deliveryAddress.zip} {order.deliveryAddress.city}
-                          {order.deliveryAddress.notes && (
-                            <span className="block ml-4 italic">{order.deliveryAddress.notes}</span>
-                          )}
+                          {order.deliveryAddress.notes && <span className="block ml-4 italic">{order.deliveryAddress.notes}</span>}
                         </p>
                       )}
                     </div>
@@ -199,26 +279,14 @@ export default function OrderNotification({ onClose }: Props) {
                   {/* Items */}
                   <div className="px-3 pb-2 space-y-0.5 border-t border-white/[0.05] pt-2">
                     {order.items.map((item, i) => (
-                      <div
-                        key={i}
-                        className="flex justify-between items-start text-xs"
-                      >
+                      <div key={i} className="flex justify-between items-start text-xs">
                         <div className="flex-1 min-w-0">
                           <span className="text-white/70">
-                            <span className="font-mono text-[#6b7280] mr-1">
-                              {item.quantity}×
-                            </span>
+                            <span className="font-mono text-[#6b7280] mr-1">{item.quantity}×</span>
                             {item.name}
                           </span>
-                          {item.options.length > 0 && (
-                            <p className="text-[10px] text-[#6b7280] mt-0.5 ml-4">
-                              {item.options.join(', ')}
-                            </p>
-                          )}
                         </div>
-                        <span className="text-white/50 font-mono ml-2 shrink-0">
-                          {formatCents(item.totalPrice)}
-                        </span>
+                        <span className="text-white/50 font-mono ml-2 shrink-0">{formatCents(item.totalPrice)}</span>
                       </div>
                     ))}
                   </div>
@@ -226,9 +294,7 @@ export default function OrderNotification({ onClose }: Props) {
                   {/* Notes */}
                   {order.notes && (
                     <div className="px-3 pb-2 border-t border-white/[0.05] pt-2">
-                      <p className="text-[10px] text-[#6b7280] italic">
-                        "{order.notes}"
-                      </p>
+                      <p className="text-[10px] text-[#6b7280] italic">"{order.notes}"</p>
                     </div>
                   )}
 
@@ -244,10 +310,22 @@ export default function OrderNotification({ onClose }: Props) {
                       </button>
                       <button
                         type="button"
-                        onClick={() => loadOrderToCart(order)}
-                        className="flex-1 min-h-[38px] rounded-lg bg-[#00e87a] hover:bg-[#00d470] active:scale-[0.99] text-black text-xs font-bold transition-all shadow-md shadow-[#00e87a]/15"
+                        onClick={() => handlePrintBon(order)}
+                        disabled={printing === order.id}
+                        className="flex-1 min-h-[38px] rounded-lg bg-[#00e87a] hover:bg-[#00d470] active:scale-[0.99] text-black text-xs font-bold transition-all shadow-md shadow-[#00e87a]/15 disabled:opacity-60 disabled:cursor-wait flex items-center justify-center gap-1.5"
                       >
-                        In Bon laden
+                        {printing === order.id ? (
+                          <>
+                            <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                            </svg>
+                            Bon wird erstellt...
+                          </>
+                        ) : (
+                          <>
+                            🖨️ Bon drucken
+                          </>
+                        )}
                       </button>
                     </div>
                   )}
