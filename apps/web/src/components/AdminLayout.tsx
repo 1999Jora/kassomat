@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import useAuthStore from '../store/useAuthStore';
@@ -50,10 +51,86 @@ const NAV = [
   },
 ];
 
+function SidebarContent({
+  user,
+  onNavClick,
+  onLogout,
+}: {
+  user: { email: string } | null;
+  onNavClick?: () => void;
+  onLogout: () => void;
+}) {
+  return (
+    <>
+      {/* Logo */}
+      <div className="flex items-center gap-2.5 px-4 h-14 border-b border-white/[0.06] shrink-0">
+        <div className="w-7 h-7 rounded-lg bg-[#00e87a] flex items-center justify-center shadow-md shadow-[#00e87a]/20">
+          <span className="text-black font-bold text-xs leading-none">K</span>
+        </div>
+        <div>
+          <p className="text-sm font-semibold leading-tight">Kassomat</p>
+          {user && <p className="text-[10px] text-[#6b7280] truncate max-w-[120px]">{user.email}</p>}
+        </div>
+      </div>
+
+      {/* Nav */}
+      <nav className="flex-1 p-2 space-y-0.5 pt-3">
+        {NAV.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.exact}
+            onClick={onNavClick}
+            className={({ isActive }) =>
+              `relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150 ${
+                isActive
+                  ? 'text-white font-medium'
+                  : 'text-[#6b7280] hover:text-white/80 hover:bg-white/[0.04]'
+              }`
+            }
+          >
+            {({ isActive }) => (
+              <>
+                {isActive && (
+                  <motion.div
+                    layoutId="nav-active"
+                    className="absolute inset-0 bg-white/[0.07] rounded-xl"
+                    transition={{ type: 'spring', stiffness: 400, damping: 35 }}
+                  />
+                )}
+                <span className={`relative z-10 transition-colors ${isActive ? 'text-[#00e87a]' : ''}`}>
+                  {item.icon}
+                </span>
+                <span className="relative z-10">{item.label}</span>
+              </>
+            )}
+          </NavLink>
+        ))}
+      </nav>
+
+      {/* Logout */}
+      <div className="p-2 border-t border-white/[0.06]">
+        <button
+          onClick={onLogout}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-[#6b7280] hover:text-red-400 hover:bg-red-900/10 transition-all duration-150"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+          <span>Abmelden</span>
+        </button>
+      </div>
+    </>
+  );
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   function handleLogout() {
     logout();
@@ -62,71 +139,66 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="h-screen bg-[#080a0c] text-white flex overflow-hidden">
-      {/* Sidebar */}
-      <aside className="w-56 shrink-0 border-r border-white/[0.06] flex flex-col bg-[#080a0c]">
-        {/* Logo */}
-        <div className="flex items-center gap-2.5 px-4 h-14 border-b border-white/[0.06] shrink-0">
-          <div className="w-7 h-7 rounded-lg bg-[#00e87a] flex items-center justify-center shadow-md shadow-[#00e87a]/20">
-            <span className="text-black font-bold text-xs leading-none">K</span>
-          </div>
-          <div>
-            <p className="text-sm font-semibold leading-tight">Kassomat</p>
-            {user && <p className="text-[10px] text-[#6b7280] truncate max-w-[120px]">{user.email}</p>}
-          </div>
-        </div>
-
-        {/* Nav */}
-        <nav className="flex-1 p-2 space-y-0.5 pt-3">
-          {NAV.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.exact}
-              className={({ isActive }) =>
-                `relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150 ${
-                  isActive
-                    ? 'text-white font-medium'
-                    : 'text-[#6b7280] hover:text-white/80 hover:bg-white/[0.04]'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <motion.div
-                      layoutId="nav-active"
-                      className="absolute inset-0 bg-white/[0.07] rounded-xl"
-                      transition={{ type: 'spring', stiffness: 400, damping: 35 }}
-                    />
-                  )}
-                  <span className={`relative z-10 transition-colors ${isActive ? 'text-[#00e87a]' : ''}`}>
-                    {item.icon}
-                  </span>
-                  <span className="relative z-10">{item.label}</span>
-                </>
-              )}
-            </NavLink>
-          ))}
-        </nav>
-
-        {/* Logout */}
-        <div className="p-2 border-t border-white/[0.06]">
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-[#6b7280] hover:text-red-400 hover:bg-red-900/10 transition-all duration-150"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-            <span>Abmelden</span>
-          </button>
-        </div>
+      {/* Desktop/Tablet Sidebar - hidden on mobile */}
+      <aside className="hidden md:flex w-56 shrink-0 border-r border-white/[0.06] flex-col bg-[#080a0c]">
+        <SidebarContent user={user} onLogout={handleLogout} />
       </aside>
 
+      {/* Mobile top bar */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-[#080a0c] border-b border-white/[0.06] flex items-center px-4 gap-3 z-30 shrink-0">
+        <button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Menü öffnen"
+          className="w-9 h-9 rounded-xl bg-white/[0.05] hover:bg-white/10 flex items-center justify-center transition-colors border border-white/[0.06]"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+        <div className="w-7 h-7 rounded-lg bg-[#00e87a] flex items-center justify-center shadow-md shadow-[#00e87a]/20">
+          <span className="text-black font-bold text-xs leading-none">K</span>
+        </div>
+        <span className="font-bold text-sm tracking-tight">Kassomat</span>
+      </div>
+
+      {/* Mobile drawer overlay */}
+      <AnimatePresence>
+        {drawerOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              key="backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="md:hidden fixed inset-0 bg-black/60 z-40"
+              onClick={() => setDrawerOpen(false)}
+            />
+            {/* Drawer */}
+            <motion.aside
+              key="drawer"
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              className="md:hidden fixed top-0 left-0 bottom-0 w-56 bg-[#080a0c] border-r border-white/[0.06] flex flex-col z-50"
+            >
+              <SidebarContent
+                user={user}
+                onNavClick={() => setDrawerOpen(false)}
+                onLogout={handleLogout}
+              />
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Page content with transition */}
-      <main className="flex-1 overflow-auto relative">
+      <main className="flex-1 overflow-auto relative mt-14 md:mt-0">
         <AnimatePresence mode="wait">
           <motion.div
             key={location.pathname}

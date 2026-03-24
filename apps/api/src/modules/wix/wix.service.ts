@@ -216,6 +216,20 @@ export class WixService {
       include: { items: true },
     });
 
-    return saved as unknown as IncomingOrder;
+    const result: any = {
+      ...saved,
+      customer: (saved as any).customerName ? {
+        name: (saved as any).customerName,
+        phone: (saved as any).customerPhone ?? null,
+        email: (saved as any).customerEmail ?? null,
+      } : null,
+      deliveryAddress: (saved as any).deliveryStreet ? {
+        street: (saved as any).deliveryStreet,
+        city: (saved as any).deliveryCity ?? '',
+        zip: (saved as any).deliveryZip ?? '',
+        notes: null,
+      } : null,
+    };
+    return result as unknown as IncomingOrder;
   }
 }

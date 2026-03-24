@@ -16,6 +16,23 @@ const wixService = new WixService();
 // Helpers
 // ---------------------------------------------------------------------------
 
+function toIncomingOrder(p: any): any {
+  return {
+    ...p,
+    customer: p.customerName ? {
+      name: p.customerName,
+      phone: p.customerPhone ?? null,
+      email: p.customerEmail ?? null,
+    } : null,
+    deliveryAddress: p.deliveryStreet ? {
+      street: p.deliveryStreet,
+      city: p.deliveryCity ?? '',
+      zip: p.deliveryZip ?? '',
+      notes: p.deliveryNotes ?? null,
+    } : null,
+  };
+}
+
 /**
  * Extract the raw body string from a Fastify request.
  * Fastify stores the raw body buffer on request.rawBody when the
@@ -95,7 +112,7 @@ export async function webhooksRoutes(fastify: FastifyInstance): Promise<void> {
             // Emit WebSocket event to tenant room
             const realtime = getRealtimeService(fastify);
             if (realtime) {
-              realtime.emitNewOrder(tenantId, order);
+              realtime.emitNewOrder(tenantId, toIncomingOrder(order));
             }
 
             // Auto-accept if tenant has autoAccept enabled
@@ -162,7 +179,7 @@ export async function webhooksRoutes(fastify: FastifyInstance): Promise<void> {
 
             const realtime = getRealtimeService(fastify);
             if (realtime) {
-              realtime.emitNewOrder(tenantId, order);
+              realtime.emitNewOrder(tenantId, toIncomingOrder(order));
             }
           } catch (err: unknown) {
             request.log.error({ err }, '[Wix] Webhook processing failed');

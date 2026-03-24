@@ -8,8 +8,9 @@ import OrderNotification from '../components/OrderNotification';
 import { useAppStore } from '../store/useAppStore';
 
 export default function POSLayout() {
-  const { pendingOrders } = useAppStore();
+  const { pendingOrders, cartItems } = useAppStore();
   const [ordersOpen, setOrdersOpen] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'articles' | 'cart' | 'payment'>('articles');
 
   // Auto-open order panel when new orders arrive
   useEffect(() => {
@@ -22,22 +23,80 @@ export default function POSLayout() {
     <div className="h-screen bg-[#080a0c] text-white flex flex-col overflow-hidden font-mono">
       <Header onOrdersClick={() => setOrdersOpen((o) => !o)} />
 
-      {/* 3-column main area */}
+      {/* Desktop: 3 columns | Tablet: 2 columns | Mobile: tabs */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Column 1: Article grid (~flex-grow) */}
-        <div className="flex-1 min-w-0 border-r border-white/[0.06] overflow-hidden">
+        {/* Articles - always visible on md+, on mobile only when tab=articles */}
+        <div className={`${mobileTab === 'articles' ? 'flex' : 'hidden'} md:flex flex-1 min-w-0 border-r border-white/[0.06] overflow-hidden flex-col`}>
           <ArticleGrid />
         </div>
 
-        {/* Column 2: Cart */}
-        <div className="w-[280px] xl:w-[320px] 2xl:w-[360px] border-r border-white/[0.06] overflow-hidden shrink-0 flex flex-col">
+        {/* Cart - on mobile only when tab=cart, on tablet hidden, on desktop visible */}
+        <div className={`${mobileTab === 'cart' ? 'flex' : 'hidden'} lg:flex w-full lg:w-[280px] xl:w-[320px] border-r border-white/[0.06] overflow-hidden shrink-0 flex-col`}>
           <Cart />
         </div>
 
-        {/* Column 3: Payment panel */}
-        <div className="w-[256px] xl:w-[288px] 2xl:w-[320px] overflow-hidden shrink-0 flex flex-col bg-[#080a0c]">
+        {/* Payment - on mobile only when tab=payment, on tablet hidden, on desktop visible */}
+        <div className={`${mobileTab === 'payment' ? 'flex' : 'hidden'} lg:flex w-full lg:w-[256px] xl:w-[288px] overflow-hidden shrink-0 flex-col bg-[#080a0c]`}>
           <PaymentPanel />
         </div>
+      </div>
+
+      {/* Mobile bottom nav */}
+      <div className="md:hidden border-t border-white/[0.06] bg-[#0e1115] flex shrink-0">
+        {(
+          [
+            {
+              id: 'articles' as const,
+              label: 'Artikel',
+              icon: (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="7" height="7" rx="1" />
+                  <rect x="14" y="3" width="7" height="7" rx="1" />
+                  <rect x="3" y="14" width="7" height="7" rx="1" />
+                  <rect x="14" y="14" width="7" height="7" rx="1" />
+                </svg>
+              ),
+            },
+            {
+              id: 'cart' as const,
+              label: 'Bon',
+              icon: (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <path d="M16 10a4 4 0 0 1-8 0" />
+                </svg>
+              ),
+            },
+            {
+              id: 'payment' as const,
+              label: 'Zahlung',
+              icon: (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="2" y="5" width="20" height="14" rx="2" />
+                  <line x1="2" y1="10" x2="22" y2="10" />
+                </svg>
+              ),
+            },
+          ] as Array<{ id: 'articles' | 'cart' | 'payment'; label: string; icon: React.ReactNode }>
+        ).map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setMobileTab(tab.id)}
+            className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 text-[10px] font-medium transition-colors relative ${
+              mobileTab === tab.id ? 'text-[#00e87a]' : 'text-[#6b7280]'
+            }`}
+          >
+            {tab.icon}
+            {tab.label}
+            {tab.id === 'cart' && cartItems.length > 0 && (
+              <span className="absolute top-2 right-1/4 w-4 h-4 rounded-full bg-[#00e87a] text-black text-[8px] font-bold flex items-center justify-center">
+                {cartItems.length}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* Order notification panel (slide-in) */}

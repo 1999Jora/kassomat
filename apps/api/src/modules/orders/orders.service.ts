@@ -3,6 +3,23 @@ import { NotFoundError, ValidationError } from '../../lib/errors';
 import { ReceiptsService } from '../receipts/receipts.service';
 import type { PaymentMethod } from '@kassomat/types';
 
+function toIncomingOrder(p: any): any {
+  return {
+    ...p,
+    customer: p.customerName ? {
+      name: p.customerName,
+      phone: p.customerPhone ?? null,
+      email: p.customerEmail ?? null,
+    } : null,
+    deliveryAddress: p.deliveryStreet ? {
+      street: p.deliveryStreet,
+      city: p.deliveryCity ?? '',
+      zip: p.deliveryZip ?? '',
+      notes: p.deliveryNotes ?? null,
+    } : null,
+  };
+}
+
 export class OrdersService {
   private receiptsService = new ReceiptsService();
 
@@ -31,7 +48,7 @@ export class OrdersService {
       prisma.incomingOrder.count({ where }),
     ]);
 
-    return { items, total, page, pageSize, hasMore: skip + items.length < total };
+    return { items: items.map(toIncomingOrder), total, page, pageSize, hasMore: skip + items.length < total };
   }
 
   async updateStatus(
