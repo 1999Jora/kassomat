@@ -1,0 +1,503 @@
+// ============================================================
+// KASSOMAT — Prisma Schema
+// PostgreSQL via Supabase
+// WICHTIG: Alle Geldbeträge als Int (Cent) gespeichert
+//          Verschlüsselte Felder enden auf _encrypted
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum TenantPlan {
+  starter
+  pro
+  business
+}
+
+enum TenantStatus {
+  active
+  suspended
+  trial
+}
+
+enum UserRole {
+  owner
+  admin
+  cashier
+}
+
+enum VatRate {
+  VAT_0  @map("0")
+  VAT_10 @map("10")
+  VAT_20 @map("20")
+}
+
+enum ReceiptType {
+  sale
+  cancellation
+  training
+  null_receipt
+  start_receipt
+  month_receipt
+  year_receipt
+}
+
+enum ReceiptStatus {
+  pending
+  signed
+  printed
+  cancelled
+  offline_pending
+}
+
+enum SalesChannel {
+  direct
+  lieferando
+  wix
+}
+
+enum PaymentMethod {
+  cash
+  card
+  online
+}
+
+enum IncomingOrderStatus {
+  pending
+  accepted
+  in_progress
+  completed
+  cancelled
+}
+
+enum OrderSource {
+  lieferando
+  wix
+}
+
+enum DeliveryPaymentMethod {
+  cash_on_delivery
+  online_paid
+}
+
+enum PrinterConnectionType {
+  network
+  usb
+}
+
+enum PrintJobStatus {
+  pending
+  printing
+  done
+  error
+}
+
+enum ATrustEnvironment {
+  test
+  production
+}
+
+// ============================================================
+// TENANT
+// ============================================================
+
+model Tenant {
+  id           String       @id @default(uuid())
+  name         String
+  slug         String       @unique
+  plan         TenantPlan   @default(starter)
+  status       TenantStatus @default(trial)
+  trialEndsAt  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // Settings (inline, kein separates Model nötig)
+  currency        String  @default("EUR")
+  timezone        String  @default("Europe/Vienna")
+  vatNumber       String?
+  receiptFooter   String?
+  printerIp       String?
+  printerPort     Int?
+  rksvEnabled     Boolean @default(true)
+
+  // A-Trust Config (API Key verschlüsselt)
+  atrustCertificateSerial String?
+  atrustApiKey_encrypted  String?
+  atrustApiKeyHint        String?
+  atrustEnvironment       ATrustEnvironment @default(test)
+
+  // Lieferando Config
+  lieferandoRestaurantId   String?
+  lieferandoApiKey_encrypted String?
+  lieferandoApiKeyHint     String?
+  lieferandoWebhookSecret  String?
+  lieferandoIsActive       Boolean @default(false)
+
+  // Wix Config
+  wixSiteId               String?
+  wixApiKey_encrypted     String?
+  wixApiKeyHint           String?
+  wixWebhookSecret        String?
+  wixIsActive             Boolean @default(false)
+  wixDefaultDeliveryPayment String @default("cash")
+
+  // myPOS Config
+  myposStoreId              String?
+  myposApiKey_encrypted     String?
+  myposApiKeyHint           String?
+  myposSecretKey_encrypted  String?
+  myposTerminalSerial       String?
+
+  // Relations
+  users         User[]
+  products      Product[]
+  categories    Category[]
+  receipts      Receipt[]
+  incomingOrders IncomingOrder[]
+  shifts        Shift[]
+  dailyClosings DailyClosing[]
+  depEntries    DEPEntry[]
+  printJobs     PrintJob[]
+
+  @@index([slug])
+  @@index([status])
+}
+
+// ============================================================
+// USER
+// ============================================================
+
+model User {
+  id           String    @id @default(uuid())
+  tenantId     String
+  email        String
+  passwordHash String
+  role         UserRole  @default(cashier)
+  name         String
+  pin          String?   // 4-stellig, argon2-gehashed
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastLoginAt  DateTime?
+
+  // Relations
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  receipts      Receipt[]
+  shifts        Shift[]
+  dailyClosings DailyClosing[]
+  refreshTokens RefreshToken[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([email])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  isRevoked Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+// ============================================================
+// PRODUKTE & KATEGORIEN
+// ============================================================
+
+model Category {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  color     String   @default("#6B7280")
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@index([tenantId])
+  @@index([tenantId, sortOrder])
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  price       Int      // in Cent
+  vatRate     VatRate  @default(VAT_20)
+  categoryId  String
+  pluCode     String?  // Schnellzugriff
+  barcode     String?
+  color       String?  // Hex-Farbe für Kachel
+  isActive    Boolean  @default(true)
+
+  // Externe IDs für Integrations-Mapping
+  lieferandoExternalId String?
+  wixProductId         String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft-Delete
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category     Category      @relation(fields: [categoryId], references: [id])
+  receiptItems ReceiptItem[]
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@index([tenantId, categoryId])
+  @@index([tenantId, pluCode])
+  @@index([tenantId, barcode])
+  @@index([lieferandoExternalId])
+  @@index([wixProductId])
+  @@index([deletedAt])
+}
+
+// ============================================================
+// BON / BELEG
+// ============================================================
+
+model Receipt {
+  id               String        @id @default(uuid())
+  tenantId         String
+  receiptNumber    String        // z.B. "2024-000042", fortlaufend pro Tenant
+  cashRegisterId   String        // Kassen-ID für FinanzOnline
+  type             ReceiptType   @default(sale)
+  status           ReceiptStatus @default(pending)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  cashierId        String
+  channel          SalesChannel  @default(direct)
+  externalOrderId  String?       // Lieferando oder Wix Order-ID (String, kein FK)
+  incomingOrderId  String?       // FK zu IncomingOrder.id (optional)
+
+  // Payment (inline)
+  paymentMethod    PaymentMethod @default(cash)
+  amountPaid       Int           // in Cent
+  change           Int           @default(0) // in Cent
+  tip              Int           @default(0) // in Cent
+
+  // Totals (inline für Performance)
+  subtotalNet      Int           // in Cent
+  vat0             Int           @default(0)
+  vat10            Int           @default(0)
+  vat20            Int           @default(0)
+  totalVat         Int           // in Cent
+  totalGross       Int           // in Cent
+
+  // RKSV Data (inline, da 1:1 und immer zusammen abgefragt)
+  rksv_registrierkasseId      String?
+  rksv_belegnummer            String?
+  rksv_barumsatzSumme         Int      @default(0)
+  rksv_previousReceiptHash    String?
+  rksv_receiptHash            String?
+  rksv_signature              String?  // Base64
+  rksv_qrCodeData             String?
+  rksv_signedAt               DateTime?
+  rksv_atCertificateSerial    String?
+
+  // Relations
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cashier      User          @relation(fields: [cashierId], references: [id])
+  items        ReceiptItem[]
+  depEntry     DEPEntry?
+  printJobs     PrintJob[]
+  incomingOrder IncomingOrder? @relation(fields: [incomingOrderId], references: [id])
+
+  @@unique([tenantId, receiptNumber])
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@index([tenantId, channel])
+  @@index([externalOrderId])
+  @@index([tenantId, type])
+}
+
+model ReceiptItem {
+  id          String  @id @default(uuid())
+  receiptId   String
+  productId   String
+  productName String  // Snapshot bei Erstellung
+  quantity    Int
+  unitPrice   Int     // in Cent
+  vatRate     VatRate
+  discount    Int     @default(0) // in Cent
+  totalNet    Int     // in Cent
+  totalVat    Int     // in Cent
+  totalGross  Int     // in Cent
+
+  receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([receiptId])
+  @@index([productId])
+}
+
+// ============================================================
+// DEP (Datenerfassungsprotokoll)
+// ============================================================
+
+model DEPEntry {
+  id          String   @id @default(uuid())
+  tenantId    String
+  receiptId   String   @unique
+  belegnummer String
+  belegtyp    String
+  timestamp   DateTime
+  rksv_hash   String
+  signature   String
+  rawData     Json     // vollständige RKSV JSON-Struktur nach BMF-Spec
+  createdAt   DateTime @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  receipt Receipt @relation(fields: [receiptId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, timestamp])
+  @@index([belegnummer])
+}
+
+// ============================================================
+// EINGEHENDE BESTELLUNGEN
+// ============================================================
+
+model IncomingOrder {
+  id              String                @id @default(uuid())
+  tenantId        String
+  source          OrderSource
+  externalId      String                // Lieferando / Wix Order-ID
+  status          IncomingOrderStatus   @default(pending)
+  receivedAt      DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  // Customer (inline)
+  customerName    String?
+  customerPhone   String?
+  customerEmail   String?
+
+  // Delivery Address (inline)
+  deliveryStreet  String?
+  deliveryCity    String?
+  deliveryZip     String?
+  deliveryNotes   String?
+
+  paymentMethod   DeliveryPaymentMethod @default(cash_on_delivery)
+  totalAmount     Int                   // in Cent
+  notes           String?
+
+  // Webhook-Rohdaten für Debugging
+  rawPayload      Json?
+
+  // Relations
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items    IncomingOrderItem[]
+  receipts Receipt[]  // Bons die aus dieser Order erstellt wurden
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, receivedAt])
+  @@index([externalId])
+}
+
+model IncomingOrderItem {
+  id         String @id @default(uuid())
+  orderId    String
+  externalId String
+  name       String
+  quantity   Int
+  unitPrice  Int    // in Cent
+  totalPrice Int    // in Cent
+  options    String[] // JSON Array
+
+  order IncomingOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+// ============================================================
+// SCHICHT
+// ============================================================
+
+model Shift {
+  id           String    @id @default(uuid())
+  tenantId     String
+  cashierId    String
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+  openingFloat Int       // in Cent
+  closingFloat Int?      // in Cent, null solange offen
+  totalRevenue Int       @default(0) // in Cent
+  receiptCount Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant  Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cashier User   @relation(fields: [cashierId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, startedAt])
+  @@index([cashierId])
+}
+
+// ============================================================
+// TAGESABSCHLUSS
+// ============================================================
+
+model DailyClosing {
+  id                String   @id @default(uuid())
+  tenantId          String
+  date              String   // "YYYY-MM-DD"
+  closedBy          String
+  closedAt          DateTime @default(now())
+  totalCash         Int      // in Cent
+  totalCard         Int      // in Cent
+  totalOnline       Int      // in Cent
+  totalRevenue      Int      // in Cent
+  receiptCount      Int
+  cancellationCount Int
+  depExportPath     String?  // Pfad zum DEP-Export auf Storage
+
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  closedByUser User @relation(fields: [closedBy], references: [id])
+
+  @@unique([tenantId, date])
+  @@index([tenantId])
+  @@index([tenantId, date])
+}
+
+// ============================================================
+// DRUCKER / PRINT JOBS
+// ============================================================
+
+model PrintJob {
+  id           String         @id @default(uuid())
+  tenantId     String
+  receiptId    String
+  status       PrintJobStatus @default(pending)
+  createdAt    DateTime       @default(now())
+  completedAt  DateTime?
+  errorMessage String?
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  receipt Receipt @relation(fields: [receiptId], references: [id])
+
+  @@index([tenantId])
+  @@index([status])
+}

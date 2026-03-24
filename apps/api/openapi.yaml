@@ -1,0 +1,1734 @@
+openapi: 3.1.0
+info:
+  title: Kassomat API
+  version: 1.0.0
+  description: |
+    Kassomat POS SaaS API — RKSV-konforme Registrierkasse für österreichische Betriebe.
+
+    ## Authentifizierung
+    Alle Endpoints (außer /auth/* und /webhooks/*) erfordern einen Bearer Token im
+    `Authorization` Header: `Authorization: Bearer <access_token>`
+
+    ## Multi-Tenant
+    Alle Daten sind tenant-isoliert. Der Tenant wird aus dem JWT extrahiert.
+    Ein Benutzer kann niemals Daten eines anderen Tenants sehen oder verändern.
+
+    ## Geldbeträge
+    Alle Geldbeträge sind in **Cent (Integer)**. Beispiel: €2,50 = `250`
+
+servers:
+  - url: https://api.kassomat.at
+    description: Production
+  - url: https://api-staging.kassomat.at
+    description: Staging
+  - url: http://localhost:3001
+    description: Local Development
+
+tags:
+  - name: Auth
+    description: Authentifizierung und Token-Verwaltung
+  - name: Tenant
+    description: Tenant-Einstellungen und Registrierung
+  - name: Products
+    description: Artikel- und Kategorieverwaltung
+  - name: Receipts
+    description: Bon-Erstellung, RKSV-Signierung und Storno
+  - name: Orders
+    description: Eingehende Bestellungen von Lieferando und Wix
+  - name: DEP
+    description: Datenerfassungsprotokoll Export
+  - name: Shifts
+    description: Schichtverwaltung
+  - name: Analytics
+    description: Umsatzberichte und Auswertungen
+  - name: Webhooks
+    description: Eingehende Webhooks von externen Systemen
+
+# ============================================================
+# SECURITY SCHEME
+# ============================================================
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  # ============================================================
+  # REUSABLE SCHEMAS
+  # ============================================================
+  schemas:
+    Error:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: UNAUTHORIZED
+            message:
+              type: string
+              example: Ungültiger oder abgelaufener Token
+            details:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+
+    Pagination:
+      type: object
+      required: [total, page, pageSize, hasMore]
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        hasMore:
+          type: boolean
+
+    Tenant:
+      type: object
+      required: [id, name, slug, plan, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Spätii Innsbruck
+        slug:
+          type: string
+          example: spaetii-innsbruck
+        plan:
+          type: string
+          enum: [starter, pro, business]
+        status:
+          type: string
+          enum: [active, suspended, trial]
+        trialEndsAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        settings:
+          $ref: '#/components/schemas/TenantSettings'
+
+    TenantSettings:
+      type: object
+      properties:
+        currency:
+          type: string
+          example: EUR
+        timezone:
+          type: string
+          example: Europe/Vienna
+        vatNumber:
+          type: string
+          nullable: true
+          example: ATU12345678
+        receiptFooter:
+          type: string
+          nullable: true
+        printerIp:
+          type: string
+          nullable: true
+          example: 192.168.1.100
+        printerPort:
+          type: integer
+          nullable: true
+          example: 9100
+        rksvEnabled:
+          type: boolean
+        atrust:
+          $ref: '#/components/schemas/ATrustConfig'
+          nullable: true
+        lieferando:
+          $ref: '#/components/schemas/LieferandoConfig'
+          nullable: true
+        wix:
+          $ref: '#/components/schemas/WixConfig'
+          nullable: true
+
+    ATrustConfig:
+      type: object
+      required: [certificateSerial, environment]
+      properties:
+        certificateSerial:
+          type: string
+        environment:
+          type: string
+          enum: [test, production]
+
+    LieferandoConfig:
+      type: object
+      required: [restaurantId, isActive]
+      properties:
+        restaurantId:
+          type: string
+        isActive:
+          type: boolean
+
+    WixConfig:
+      type: object
+      required: [siteId, isActive, defaultDeliveryPayment]
+      properties:
+        siteId:
+          type: string
+        isActive:
+          type: boolean
+        defaultDeliveryPayment:
+          type: string
+          enum: [cash, online]
+
+    User:
+      type: object
+      required: [id, tenantId, email, role, name, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [owner, admin, cashier]
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    Product:
+      type: object
+      required: [id, tenantId, name, price, vatRate, categoryId, isActive, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Wiener Schnitzel
+        price:
+          type: integer
+          description: Preis in Cent
+          example: 1490
+        vatRate:
+          type: integer
+          enum: [0, 10, 20]
+        categoryId:
+          type: string
+          format: uuid
+        pluCode:
+          type: string
+          nullable: true
+          example: "42"
+        barcode:
+          type: string
+          nullable: true
+        color:
+          type: string
+          nullable: true
+          example: "#1D9E75"
+        isActive:
+          type: boolean
+        lieferandoExternalId:
+          type: string
+          nullable: true
+        wixProductId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    Category:
+      type: object
+      required: [id, tenantId, name, color, sortOrder]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Hauptgerichte
+        color:
+          type: string
+          example: "#1D9E75"
+        sortOrder:
+          type: integer
+
+    Receipt:
+      type: object
+      required: [id, tenantId, receiptNumber, type, status, createdAt, cashierId, channel, items, totals]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        receiptNumber:
+          type: string
+          example: "2024-000042"
+        cashRegisterId:
+          type: string
+        type:
+          type: string
+          enum: [sale, cancellation, training, null_receipt, start_receipt, month_receipt, year_receipt]
+        status:
+          type: string
+          enum: [pending, signed, printed, cancelled, offline_pending]
+        createdAt:
+          type: string
+          format: date-time
+        cashierId:
+          type: string
+          format: uuid
+        channel:
+          type: string
+          enum: [direct, lieferando, wix]
+        externalOrderId:
+          type: string
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReceiptItem'
+        payment:
+          $ref: '#/components/schemas/Payment'
+        rksv:
+          $ref: '#/components/schemas/RKSVData'
+        totals:
+          $ref: '#/components/schemas/ReceiptTotals'
+
+    ReceiptItem:
+      type: object
+      required: [id, productId, productName, quantity, unitPrice, vatRate, totalNet, totalVat, totalGross]
+      properties:
+        id:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+        productName:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+        unitPrice:
+          type: integer
+          description: Einzelpreis in Cent
+        vatRate:
+          type: integer
+          enum: [0, 10, 20]
+        discount:
+          type: integer
+          description: Rabatt in Cent
+          default: 0
+        totalNet:
+          type: integer
+        totalVat:
+          type: integer
+        totalGross:
+          type: integer
+
+    Payment:
+      type: object
+      required: [method, amountPaid, change, tip]
+      properties:
+        method:
+          type: string
+          enum: [cash, card, online]
+        amountPaid:
+          type: integer
+          description: Bezahlter Betrag in Cent
+        change:
+          type: integer
+          description: Wechselgeld in Cent
+        tip:
+          type: integer
+          description: Trinkgeld in Cent
+
+    ReceiptTotals:
+      type: object
+      required: [subtotalNet, vat0, vat10, vat20, totalVat, totalGross]
+      properties:
+        subtotalNet:
+          type: integer
+        vat0:
+          type: integer
+        vat10:
+          type: integer
+        vat20:
+          type: integer
+        totalVat:
+          type: integer
+        totalGross:
+          type: integer
+
+    RKSVData:
+      type: object
+      properties:
+        registrierkasseId:
+          type: string
+        belegnummer:
+          type: string
+        barumsatzSumme:
+          type: integer
+        previousReceiptHash:
+          type: string
+        receiptHash:
+          type: string
+        signature:
+          type: string
+          description: Base64-kodierte A-Trust Signatur
+        qrCodeData:
+          type: string
+        signedAt:
+          type: string
+          format: date-time
+          nullable: true
+        atCertificateSerial:
+          type: string
+
+    IncomingOrder:
+      type: object
+      required: [id, tenantId, source, externalId, status, receivedAt, items, paymentMethod, totalAmount]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        source:
+          type: string
+          enum: [lieferando, wix]
+        externalId:
+          type: string
+        status:
+          type: string
+          enum: [pending, accepted, in_progress, completed, cancelled]
+        receivedAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IncomingOrderItem'
+        customer:
+          type: object
+          nullable: true
+          properties:
+            name:
+              type: string
+            phone:
+              type: string
+              nullable: true
+            email:
+              type: string
+              nullable: true
+        deliveryAddress:
+          type: object
+          nullable: true
+          properties:
+            street:
+              type: string
+            city:
+              type: string
+            zip:
+              type: string
+            notes:
+              type: string
+              nullable: true
+        paymentMethod:
+          type: string
+          enum: [cash_on_delivery, online_paid]
+        totalAmount:
+          type: integer
+          description: Gesamtbetrag in Cent
+        notes:
+          type: string
+          nullable: true
+        receiptId:
+          type: string
+          nullable: true
+
+    IncomingOrderItem:
+      type: object
+      required: [externalId, name, quantity, unitPrice, totalPrice]
+      properties:
+        externalId:
+          type: string
+        name:
+          type: string
+        quantity:
+          type: integer
+        unitPrice:
+          type: integer
+        totalPrice:
+          type: integer
+        options:
+          type: array
+          items:
+            type: string
+
+    Shift:
+      type: object
+      required: [id, tenantId, cashierId, startedAt, openingFloat, totalRevenue, receiptCount]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        cashierId:
+          type: string
+          format: uuid
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        openingFloat:
+          type: integer
+        closingFloat:
+          type: integer
+          nullable: true
+        totalRevenue:
+          type: integer
+        receiptCount:
+          type: integer
+
+    DailyClosing:
+      type: object
+      required: [id, tenantId, date, closedBy, closedAt, totalRevenue, receiptCount]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        date:
+          type: string
+          example: "2024-03-15"
+        closedBy:
+          type: string
+          format: uuid
+        closedAt:
+          type: string
+          format: date-time
+        totalCash:
+          type: integer
+        totalCard:
+          type: integer
+        totalOnline:
+          type: integer
+        totalRevenue:
+          type: integer
+        receiptCount:
+          type: integer
+        cancellationCount:
+          type: integer
+        depExportPath:
+          type: string
+          nullable: true
+
+  # ============================================================
+  # REUSABLE RESPONSES
+  # ============================================================
+  responses:
+    Unauthorized:
+      description: Kein oder ungültiger JWT Token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Keine Berechtigung für diese Aktion
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Ressource nicht gefunden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationError:
+      description: Validierungsfehler in den Eingabedaten
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+security:
+  - bearerAuth: []
+
+# ============================================================
+# PATHS
+# ============================================================
+paths:
+
+  # ---- HEALTH ----
+  /health:
+    get:
+      summary: Health Check
+      security: []
+      tags: [Auth]
+      responses:
+        '200':
+          description: API läuft
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  version:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  # ---- AUTH ----
+  /auth/login:
+    post:
+      summary: Login mit E-Mail und Passwort
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: Login erfolgreich
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      accessToken:
+                        type: string
+                      refreshToken:
+                        type: string
+                      user:
+                        $ref: '#/components/schemas/User'
+                      tenant:
+                        $ref: '#/components/schemas/Tenant'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      summary: Access Token erneuern mit Refresh Token
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Token erneuert
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      accessToken:
+                        type: string
+                      refreshToken:
+                        type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      summary: Ausloggen und Refresh Token invalidieren
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Logout erfolgreich
+
+  # ---- TENANT ----
+  /tenant:
+    get:
+      summary: Eigenen Tenant abrufen
+      tags: [Tenant]
+      responses:
+        '200':
+          description: Tenant-Daten
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Tenant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    patch:
+      summary: Tenant-Einstellungen aktualisieren
+      tags: [Tenant]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                receiptFooter:
+                  type: string
+                  nullable: true
+                printerIp:
+                  type: string
+                  nullable: true
+                printerPort:
+                  type: integer
+                  nullable: true
+                vatNumber:
+                  type: string
+                  nullable: true
+                rksvEnabled:
+                  type: boolean
+                atrust:
+                  type: object
+                  properties:
+                    certificateSerial:
+                      type: string
+                    apiKey:
+                      type: string
+                    environment:
+                      type: string
+                      enum: [test, production]
+                lieferando:
+                  type: object
+                  properties:
+                    restaurantId:
+                      type: string
+                    apiKey:
+                      type: string
+                    webhookSecret:
+                      type: string
+                    isActive:
+                      type: boolean
+                wix:
+                  type: object
+                  properties:
+                    siteId:
+                      type: string
+                    apiKey:
+                      type: string
+                    webhookSecret:
+                      type: string
+                    isActive:
+                      type: boolean
+                    defaultDeliveryPayment:
+                      type: string
+                      enum: [cash, online]
+      responses:
+        '200':
+          description: Einstellungen aktualisiert
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Tenant'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /tenant/register:
+    post:
+      summary: Neuen Tenant anlegen (Signup)
+      security: []
+      tags: [Tenant]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenantName, ownerEmail, ownerPassword, ownerName]
+              properties:
+                tenantName:
+                  type: string
+                  minLength: 2
+                  example: Spätii Innsbruck
+                ownerEmail:
+                  type: string
+                  format: email
+                ownerPassword:
+                  type: string
+                  minLength: 8
+                ownerName:
+                  type: string
+                vatNumber:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          description: Tenant erstellt, Trial gestartet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      accessToken:
+                        type: string
+                      refreshToken:
+                        type: string
+                      user:
+                        $ref: '#/components/schemas/User'
+                      tenant:
+                        $ref: '#/components/schemas/Tenant'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: E-Mail bereits registriert
+
+  # ---- PRODUCTS ----
+  /products:
+    get:
+      summary: Alle Artikel des Tenants abrufen
+      tags: [Products]
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: categoryId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Liste der Artikel
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    allOf:
+                      - $ref: '#/components/schemas/Pagination'
+                      - type: object
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Product'
+
+    post:
+      summary: Neuen Artikel erstellen
+      tags: [Products]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, price, vatRate, categoryId]
+              properties:
+                name:
+                  type: string
+                price:
+                  type: integer
+                  minimum: 0
+                vatRate:
+                  type: integer
+                  enum: [0, 10, 20]
+                categoryId:
+                  type: string
+                  format: uuid
+                pluCode:
+                  type: string
+                  nullable: true
+                barcode:
+                  type: string
+                  nullable: true
+                color:
+                  type: string
+                  nullable: true
+                lieferandoExternalId:
+                  type: string
+                  nullable: true
+                wixProductId:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          description: Artikel erstellt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Product'
+
+  /products/{id}:
+    patch:
+      summary: Artikel aktualisieren
+      tags: [Products]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                price:
+                  type: integer
+                  minimum: 0
+                vatRate:
+                  type: integer
+                  enum: [0, 10, 20]
+                categoryId:
+                  type: string
+                  format: uuid
+                pluCode:
+                  type: string
+                  nullable: true
+                barcode:
+                  type: string
+                  nullable: true
+                color:
+                  type: string
+                  nullable: true
+                isActive:
+                  type: boolean
+      responses:
+        '200':
+          description: Artikel aktualisiert
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Product'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Artikel löschen (Soft-Delete)
+      tags: [Products]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Artikel gelöscht
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /products/import:
+    post:
+      summary: Artikel per CSV importieren
+      tags: [Products]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Import abgeschlossen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      imported:
+                        type: integer
+                      skipped:
+                        type: integer
+                      errors:
+                        type: array
+                        items:
+                          type: string
+
+  # ---- CATEGORIES ----
+  /categories:
+    get:
+      summary: Alle Kategorien des Tenants
+      tags: [Products]
+      responses:
+        '200':
+          description: Liste der Kategorien
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+
+    post:
+      summary: Neue Kategorie erstellen
+      tags: [Products]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, color]
+              properties:
+                name:
+                  type: string
+                color:
+                  type: string
+                  example: "#1D9E75"
+                sortOrder:
+                  type: integer
+                  default: 0
+      responses:
+        '201':
+          description: Kategorie erstellt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Category'
+
+  /categories/{id}:
+    patch:
+      summary: Kategorie aktualisieren
+      tags: [Products]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                color:
+                  type: string
+                sortOrder:
+                  type: integer
+      responses:
+        '200':
+          description: Kategorie aktualisiert
+
+  # ---- RECEIPTS ----
+  /receipts:
+    get:
+      summary: Bons abrufen (mit Filter)
+      tags: [Receipts]
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: channel
+          in: query
+          schema:
+            type: string
+            enum: [direct, lieferando, wix]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, signed, printed, cancelled]
+      responses:
+        '200':
+          description: Liste der Bons
+
+    post:
+      summary: Neuen Bon erstellen und Signatur einleiten
+      tags: [Receipts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items, payment]
+              properties:
+                cashRegisterId:
+                  type: string
+                  default: KASSE-01
+                channel:
+                  type: string
+                  enum: [direct, lieferando, wix]
+                  default: direct
+                externalOrderId:
+                  type: string
+                  nullable: true
+                items:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [productId, quantity]
+                    properties:
+                      productId:
+                        type: string
+                        format: uuid
+                      quantity:
+                        type: integer
+                        minimum: 1
+                      discount:
+                        type: integer
+                        minimum: 0
+                        default: 0
+                payment:
+                  type: object
+                  required: [method, amountPaid]
+                  properties:
+                    method:
+                      type: string
+                      enum: [cash, card, online]
+                    amountPaid:
+                      type: integer
+                    tip:
+                      type: integer
+                      default: 0
+      responses:
+        '201':
+          description: Bon erstellt (Signatur läuft asynchron via Queue)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Receipt'
+
+  /receipts/{id}:
+    get:
+      summary: Bon abrufen
+      tags: [Receipts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Bon-Details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Receipt'
+
+  /receipts/{id}/cancel:
+    post:
+      summary: Bon stornieren (erstellt neuen Storno-Bon mit negativen Beträgen)
+      tags: [Receipts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          description: Storno-Bon erstellt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Receipt'
+
+  /receipts/{id}/print:
+    get:
+      summary: ESC/POS Druckdaten für einen Bon
+      tags: [Receipts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: ESC/POS Daten als Base64
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      escposData:
+                        type: string
+                        description: Base64-kodierte ESC/POS Druckdaten
+                      receiptUrl:
+                        type: string
+                        description: URL des digitalen Bons
+
+  /receipts/null:
+    post:
+      summary: Nullbeleg erstellen (RKSV-Test)
+      tags: [Receipts]
+      responses:
+        '201':
+          description: Nullbeleg erstellt
+
+  # ---- DAILY CLOSING ----
+  /daily-closing:
+    post:
+      summary: Tagesabschluss durchführen
+      tags: [Receipts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cashCount]
+              properties:
+                cashCount:
+                  type: integer
+                  description: Gezählter Kassenbestand in Cent
+                notes:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          description: Tagesabschluss abgeschlossen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/DailyClosing'
+
+  # ---- ORDERS ----
+  /orders:
+    get:
+      summary: Eingehende Bestellungen abrufen
+      tags: [Orders]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, accepted, in_progress, completed, cancelled]
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [lieferando, wix]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: Liste der Bestellungen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/IncomingOrder'
+
+  /orders/{id}/status:
+    patch:
+      summary: Status einer Bestellung aktualisieren
+      tags: [Orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [accepted, in_progress, completed, cancelled]
+                reason:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: Status aktualisiert
+
+  /orders/{id}/receipt:
+    post:
+      summary: Bon für eine Bestellung erstellen
+      tags: [Orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [payment]
+              properties:
+                payment:
+                  type: object
+                  required: [method, amountPaid]
+                  properties:
+                    method:
+                      type: string
+                      enum: [cash, card, online]
+                    amountPaid:
+                      type: integer
+                    tip:
+                      type: integer
+                      default: 0
+      responses:
+        '201':
+          description: Bon erstellt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Receipt'
+
+  # ---- DEP / EXPORT ----
+  /dep/export:
+    get:
+      summary: Vollständiger DEP-Export als JSON
+      tags: [DEP]
+      responses:
+        '200':
+          description: DEP Export JSON
+          content:
+            application/json:
+              schema:
+                type: object
+                description: BMF-konformes DEP-JSON
+
+  /dep/export/range:
+    get:
+      summary: DEP-Export für einen Zeitraum
+      tags: [DEP]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: DEP Export für Zeitraum
+
+  # ---- WEBHOOKS ----
+  /webhooks/lieferando:
+    post:
+      summary: Eingehender Webhook von Lieferando / JET POS API
+      security: []
+      tags: [Webhooks]
+      parameters:
+        - name: X-JET-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+          description: HMAC-SHA256 Signatur des Payloads
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: JET POS API Webhook Payload
+      responses:
+        '200':
+          description: Webhook verarbeitet
+        '401':
+          description: Ungültige Signatur
+
+  /webhooks/wix:
+    post:
+      summary: Eingehender Webhook von Wix
+      security: []
+      tags: [Webhooks]
+      parameters:
+        - name: X-Wix-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Wix eCommerce Order Webhook Payload
+      responses:
+        '200':
+          description: Webhook verarbeitet
+        '401':
+          description: Ungültige Signatur
+
+  # ---- SHIFTS ----
+  /shifts:
+    get:
+      summary: Alle Schichten abrufen
+      tags: [Shifts]
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Liste der Schichten
+
+  /shifts/start:
+    post:
+      summary: Neue Schicht starten
+      tags: [Shifts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [openingFloat]
+              properties:
+                openingFloat:
+                  type: integer
+                  description: Kassenbestand bei Schichtstart in Cent
+      responses:
+        '201':
+          description: Schicht gestartet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Shift'
+
+  /shifts/end:
+    post:
+      summary: Aktuelle Schicht beenden
+      tags: [Shifts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [closingFloat]
+              properties:
+                closingFloat:
+                  type: integer
+                  description: Gezählter Kassenbestand in Cent
+      responses:
+        '200':
+          description: Schicht beendet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Shift'
+
+  # ---- ANALYTICS ----
+  /analytics/today:
+    get:
+      summary: Analytics für den aktuellen Tag
+      tags: [Analytics]
+      responses:
+        '200':
+          description: Tages-Analytics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      totalRevenue:
+                        type: integer
+                      receiptCount:
+                        type: integer
+                      revenueByChannel:
+                        type: object
+                      revenueByPayment:
+                        type: object
+                      topProducts:
+                        type: array
+                        items:
+                          type: object
+
+  /analytics/range:
+    get:
+      summary: Analytics für einen Zeitraum
+      tags: [Analytics]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: groupBy
+          in: query
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: day
+      responses:
+        '200':
+          description: Analytics für Zeitraum

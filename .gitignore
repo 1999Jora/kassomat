@@ -1,0 +1,43 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+dist
+.next
+build
+
+# Environment files — NIEMALS committen!
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+pnpm-debug.log*
+
+# Editor
+.vscode
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Turbo
+.turbo
+
+# Coverage
+coverage
+
+# Prisma — migration files must be committed for Railway deploy
+# apps/api/prisma/migrations/*.sql
+
+# PWA
+public/sw.js
+public/workbox-*.js
