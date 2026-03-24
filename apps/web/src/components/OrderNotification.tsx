@@ -69,14 +69,15 @@ export async function printAuftragsbon(order: IncomingOrder): Promise<void> {
   // Header
   ctr('*** LIEFERAUFTRAG ***', 11, true);
   y += 2;
-  ctr(`#${order.externalId}`, 14, true);
+  ctr(`AUFTRAG #${order.orderNumber}`, 16, true);
   y += 3;
 
   const dateStr = new Date(order.receivedAt).toLocaleString('de-AT', {
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   });
   ctr(dateStr, 8);
-  const payLabel = order.paymentMethod === 'online_paid' ? '✓ BEREITS BEZAHLT' : '⚠ BAR BEI LIEFERUNG';
+  // Avoid unicode symbols — jsPDF Courier encodes them as HTML entities
+  const payLabel = order.paymentMethod === 'online_paid' ? 'BEREITS BEZAHLT' : 'BAR BEI LIEFERUNG';
   ctr(payLabel, 9, true);
   y += 3;
 
@@ -121,7 +122,7 @@ export async function printAuftragsbon(order: IncomingOrder): Promise<void> {
   doc.text(formatCents(order.totalAmount), COL_R, y, { align: 'right' });
   y += 3;
 
-  doc.save(`Auftrag_${order.externalId}.pdf`);
+  doc.save(`Auftrag_${order.orderNumber}.pdf`);
 }
 
 // ── 2. KASSENBON — manuell beim Übergabe-Klick (mit Preisen & MwSt) ──────────
@@ -182,7 +183,7 @@ export async function printThermalReceipt(order: IncomingOrder, tenantName = 'Sp
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
   txt(`Datum:   ${dateStr}`, 7);
-  txt(`Bon-Nr:  #${order.externalId}`, 7);
+  txt(`Bon-Nr:  #${order.orderNumber}`, 7);
   txt(`Zahlung: ${order.paymentMethod === 'online_paid' ? 'Online bezahlt' : 'Bar bei Lieferung'}`, 7);
   y += 1;
 
@@ -217,7 +218,7 @@ export async function printThermalReceipt(order: IncomingOrder, tenantName = 'Sp
   ctr('Danke fur Ihre Bestellung!', 8, true);
   ctr('www.spaetii-innsbruck.at', 6);
 
-  doc.save(`Bon_${order.externalId}.pdf`);
+  doc.save(`Bon_${order.orderNumber}.pdf`);
 }
 
 // ── Source + status config ────────────────────────────────────────────────────

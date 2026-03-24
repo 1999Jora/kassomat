@@ -314,6 +314,8 @@ export interface IncomingOrder {
   source: 'lieferando' | 'wix';
   /** Externe Bestell-ID vom jeweiligen System */
   externalId: string;
+  /** Kurze, fortlaufende Auftragsnummer (z.B. 42) */
+  orderNumber: number;
   status: IncomingOrderStatus;
   receivedAt: Date;
   items: IncomingOrderItem[];

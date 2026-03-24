@@ -383,6 +383,7 @@ model IncomingOrder {
   tenantId        String
   source          OrderSource
   externalId      String                // Lieferando / Wix Order-ID
+  orderNumber     Int                   @default(autoincrement()) // Kurze, fortlaufende Auftragsnummer
   status          IncomingOrderStatus   @default(pending)
   receivedAt      DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
