@@ -3,6 +3,7 @@ import { useAppStore } from '../store/useAppStore';
 import { formatCents } from '../lib/formatters';
 import { fetchProducts, fetchCategories } from '../lib/api';
 import { MOCK_CATEGORIES, MOCK_PRODUCTS } from '../lib/mockData';
+import { playKeyClick } from '../lib/sounds';
 import type { Product, Category } from '@kassomat/types';
 
 // ── Loading skeleton ──────────────────────────────────────────────────────────
@@ -179,14 +180,15 @@ export default function ArticleGrid() {
                 <button
                   key={product.id}
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
+                    playKeyClick();
                     addToCart({
                       productId: product.id,
                       name: product.name,
                       price: product.price,
                       vatRate: product.vatRate,
-                    })
-                  }
+                    });
+                  }}
                   className="rounded-xl flex flex-col items-start justify-between p-3 text-left transition-all duration-100 hover:scale-[1.02] active:scale-[0.97] border min-h-[88px] group"
                   style={{
                     backgroundColor: tileColor + '22',

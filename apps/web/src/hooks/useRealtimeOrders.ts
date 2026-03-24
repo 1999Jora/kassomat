@@ -3,6 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import { useAppStore } from '../store/useAppStore';
 import type { IncomingOrder } from '@kassomat/types';
 import { printAuftragsbon } from '../components/OrderNotification';
+import { playOrderChime } from '../lib/sounds';
 
 // ── Fetch pending orders from API ─────────────────────────────────────────────
 
@@ -61,6 +62,7 @@ export function useRealtimeOrders() {
 
     socket.on('order:new', (order: IncomingOrder) => {
       addPendingOrder(order);
+      playOrderChime();
       void printAuftragsbon(order);
     });
 

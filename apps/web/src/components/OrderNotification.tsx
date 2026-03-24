@@ -3,6 +3,7 @@ import { useAppStore } from '../store/useAppStore';
 import { formatCents, formatRelative } from '../lib/formatters';
 import type { IncomingOrder } from '@kassomat/types';
 import { jsPDF } from 'jspdf';
+import { playSuccess } from '../lib/sounds';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -256,6 +257,7 @@ export default function OrderNotification({ onClose }: Props) {
       });
 
       await printThermalReceipt(order);
+      playSuccess();
       // Bestellung nach Bon-Druck aus der Liste entfernen
       removePendingOrder(order.id);
     } catch {
