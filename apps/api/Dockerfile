@@ -1,8 +1,8 @@
 FROM node:20-alpine
 WORKDIR /app
 
-# Install build tools (needed for native packages: usb, argon2)
-RUN apk add --no-cache python3 make g++ linux-headers eudev-dev libusb-dev
+# Install build tools + OpenSSL (needed for Prisma on Alpine)
+RUN apk add --no-cache python3 make g++ linux-headers eudev-dev libusb-dev openssl openssl-dev
 
 # Install pnpm
 RUN npm install -g pnpm
