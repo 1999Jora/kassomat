@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import POSLayout from './components/POSLayout';
 import PINLock from './components/PINLock';
@@ -17,6 +18,13 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 1000 * 30, retry: 1 } },
 });
 
+const pageVariants = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  exit:    { opacity: 0, y: -6 },
+};
+const pageTransition = { duration: 0.18 };
+
 function PINGate({ children }: { children: React.ReactNode }) {
   const isLocked = useAppStore((s) => s.isLocked);
   useRealtimeOrders();
@@ -24,38 +32,57 @@ function PINGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AnimatedRoutes() {
+  const location = useLocation();
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={location.pathname}
+        variants={pageVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        transition={pageTransition}
+        style={{ height: '100%' }}
+      >
+        <Routes location={location}>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/" element={
+            <ProtectedRoute>
+              <PINGate>
+                <POSLayout />
+              </PINGate>
+            </ProtectedRoute>
+          } />
+          <Route path="/dashboard" element={
+            <ProtectedRoute>
+              <AdminLayout><DashboardPage /></AdminLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/settings" element={
+            <ProtectedRoute>
+              <AdminLayout><SettingsPage /></AdminLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/dep-export" element={
+            <ProtectedRoute>
+              <AdminLayout><DepExportPage /></AdminLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 export default function App() {
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/signup" element={<SignupPage />} />
-            <Route path="/" element={
-              <ProtectedRoute>
-                <PINGate>
-                  <POSLayout />
-                </PINGate>
-              </ProtectedRoute>
-            } />
-            <Route path="/dashboard" element={
-              <ProtectedRoute>
-                <AdminLayout><DashboardPage /></AdminLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/settings" element={
-              <ProtectedRoute>
-                <AdminLayout><SettingsPage /></AdminLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/dep-export" element={
-              <ProtectedRoute>
-                <AdminLayout><DepExportPage /></AdminLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          <AnimatedRoutes />
         </BrowserRouter>
       </QueryClientProvider>
     </ThemeProvider>
