@@ -6,11 +6,19 @@ import Cart from '../components/Cart';
 import PaymentPanel from '../components/PaymentPanel';
 import OrderNotification from '../components/OrderNotification';
 import { useAppStore } from '../store/useAppStore';
+import { initAudio } from '../lib/sounds';
 
 export default function POSLayout() {
   const { pendingOrders, cartItems } = useAppStore();
   const [ordersOpen, setOrdersOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<'articles' | 'cart' | 'payment'>('articles');
+
+  // AudioContext erst nach erster User-Geste entsperren (Browser-Autoplay-Policy)
+  useEffect(() => {
+    const unlock = () => { initAudio(); document.removeEventListener('pointerdown', unlock); };
+    document.addEventListener('pointerdown', unlock);
+    return () => document.removeEventListener('pointerdown', unlock);
+  }, []);
 
   // Auto-open order panel when new orders arrive
   useEffect(() => {

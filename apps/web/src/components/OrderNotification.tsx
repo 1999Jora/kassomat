@@ -23,7 +23,8 @@ async function loadLogoBase64(): Promise<string | null> {
 }
 
 function makeDoc(W: number, extraLines: number) {
-  const H = Math.max(150, (extraLines + 30) * 5 + 20);
+  // Extra Puffer für Zeilenumbrüche bei langen Artikelnamen
+  const H = Math.max(150, (extraLines + 40) * 5 + 20);
   return new jsPDF({ unit: 'mm', format: [W, H], orientation: 'portrait' });
 }
 
@@ -70,7 +71,9 @@ export async function printAuftragsbon(order: IncomingOrder): Promise<void> {
   // Header
   ctr('*** LIEFERAUFTRAG ***', 11, true);
   y += 2;
-  ctr(`AUFTRAG #${order.orderNumber}`, 16, true);
+  // orderNumber ist 0 bis Railway-Migration gelaufen ist → Fallback auf Ende der UUID
+  const orderNum = order.orderNumber || order.externalId.slice(-6).toUpperCase();
+  ctr(`AUFTRAG #${orderNum}`, 16, true);
   y += 3;
 
   const dateStr = new Date(order.receivedAt).toLocaleString('de-AT', {
@@ -105,12 +108,21 @@ export async function printAuftragsbon(order: IncomingOrder): Promise<void> {
   sep();
   line('ARTIKEL:', 8, true);
   y += 1;
+  const NAME_X = MARGIN + 10;
+  const NAME_MAX_W = COL_R - NAME_X; // verfügbare Breite für Artikelname
   for (const item of order.items) {
     doc.setFont('courier', 'bold');
     doc.setFontSize(10);
     doc.text(`${item.quantity}x`, MARGIN + 2, y);
     doc.setFont('courier', 'normal');
-    doc.text(item.name, MARGIN + 10, y);
+    doc.setFontSize(10);
+    // Langen Text auf mehrere Zeilen aufteilen
+    const nameLines = doc.splitTextToSize(item.name, NAME_MAX_W) as string[];
+    doc.text(nameLines[0], NAME_X, y);
+    for (let li = 1; li < nameLines.length; li++) {
+      y += 5;
+      doc.text(nameLines[li], NAME_X, y);
+    }
     y += 6;
   }
   y += 2;
@@ -123,7 +135,8 @@ export async function printAuftragsbon(order: IncomingOrder): Promise<void> {
   doc.text(formatCents(order.totalAmount), COL_R, y, { align: 'right' });
   y += 3;
 
-  doc.save(`Auftrag_${order.orderNumber}.pdf`);
+  const fileNum = order.orderNumber || order.externalId.slice(-6).toUpperCase();
+  doc.save(`Auftrag_${fileNum}.pdf`);
 }
 
 // ── 2. KASSENBON — manuell beim Übergabe-Klick (mit Preisen & MwSt) ──────────
@@ -184,7 +197,8 @@ export async function printThermalReceipt(order: IncomingOrder, tenantName = 'Sp
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
   txt(`Datum:   ${dateStr}`, 7);
-  txt(`Bon-Nr:  #${order.orderNumber}`, 7);
+  const bonNr = order.orderNumber || order.externalId.slice(-6).toUpperCase();
+  txt(`Bon-Nr:  #${bonNr}`, 7);
   txt(`Zahlung: ${order.paymentMethod === 'online_paid' ? 'Online bezahlt' : 'Bar bei Lieferung'}`, 7);
   y += 1;
 
@@ -205,7 +219,21 @@ export async function printThermalReceipt(order: IncomingOrder, tenantName = 'Sp
 
   divider();
   for (const item of order.items) {
-    row(`${item.quantity}x ${item.name}`, formatCents(item.totalPrice), 8);
+    const priceStr = formatCents(item.totalPrice);
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(8);
+    // Breite für Name = Gesamtbreite minus Preis-Spalte (ca. 18mm) minus Prefix "1x "
+    const priceW = doc.getTextWidth(priceStr) + 2;
+    const nameMaxW = PRINT_W - priceW - 6;
+    const prefix = `${item.quantity}x `;
+    const nameLines = doc.splitTextToSize(item.name, nameMaxW - doc.getTextWidth(prefix)) as string[];
+    doc.text(prefix + nameLines[0], MARGIN, y);
+    doc.text(priceStr, COL_R, y, { align: 'right' });
+    for (let li = 1; li < nameLines.length; li++) {
+      y += LINE_H;
+      doc.text('   ' + nameLines[li], MARGIN, y);
+    }
+    y += LINE_H;
   }
   y += 1;
   divider();
@@ -219,7 +247,8 @@ export async function printThermalReceipt(order: IncomingOrder, tenantName = 'Sp
   ctr('Danke fur Ihre Bestellung!', 8, true);
   ctr('www.spaetii-innsbruck.at', 6);
 
-  doc.save(`Bon_${order.orderNumber}.pdf`);
+  const bonFileNr = order.orderNumber || order.externalId.slice(-6).toUpperCase();
+  doc.save(`Bon_${bonFileNr}.pdf`);
 }
 
 // ── Source + status config ────────────────────────────────────────────────────

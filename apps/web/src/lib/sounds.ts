@@ -1,12 +1,33 @@
 // ── Web Audio API sounds — no external files needed ──────────────────────────
-// All sounds are generated programmatically for instant load and full control.
+// Singleton AudioContext: muss einmalig durch User-Geste entsperrt werden.
+// initAudio() beim ersten Klick aufrufen → danach funktionieren alle Töne.
+
+let _ctx: AudioContext | null = null;
 
 function getCtx(): AudioContext | null {
-  try {
-    return new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-  } catch {
-    return null;
+  if (!_ctx) {
+    try {
+      const Ctor = window.AudioContext
+        ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      _ctx = new Ctor();
+    } catch {
+      return null;
+    }
   }
+  // Browser sperrt AudioContext bis zur ersten User-Geste — dann resumeen
+  if (_ctx.state === 'suspended') {
+    void _ctx.resume();
+  }
+  return _ctx;
+}
+
+/**
+ * Beim ersten Klick irgendwo auf der Seite aufrufen,
+ * damit der AudioContext entsperrt wird und Hintergrund-Töne funktionieren.
+ */
+export function initAudio(): void {
+  const ctx = getCtx();
+  if (ctx?.state === 'suspended') void ctx.resume();
 }
 
 /**
@@ -37,7 +58,7 @@ export function playOrderChime(): void {
 }
 
 /**
- * Minimaler, weicher Klick für Artikeltasten (kaum wahrnehmbar, aber spürbar)
+ * Minimaler, weicher Klick für Artikeltasten
  */
 export function playKeyClick(): void {
   const ctx = getCtx();
@@ -59,7 +80,7 @@ export function playKeyClick(): void {
 }
 
 /**
- * Kurzer positiver Ton für erfolgreiche Aktionen (Bon gedruckt, Zahlung etc.)
+ * Kurzer positiver Ton für Bon drucken / Zahlung
  */
 export function playSuccess(): void {
   const ctx = getCtx();
