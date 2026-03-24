@@ -199,7 +199,6 @@ export default function PaymentPanel() {
     setPaymentMethod,
     clearCart,
     cardPaymentState,
-    cardTransactionId,
     setCardPaymentState,
   } = useAppStore();
 
