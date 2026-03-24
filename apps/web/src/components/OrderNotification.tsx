@@ -171,17 +171,28 @@ export default function OrderNotification({ onClose }: Props) {
                     </p>
                   </div>
 
-                  {/* Customer */}
-                  {order.customer && (
-                    <div className="px-3 pb-2">
-                      <p className="text-xs text-white/60">
-                        {order.customer.name}
-                        {order.customer.phone && (
-                          <span className="text-[#6b7280] ml-1.5">
-                            {order.customer.phone}
-                          </span>
-                        )}
-                      </p>
+                  {/* Customer + Delivery Address */}
+                  {(order.customer || order.deliveryAddress) && (
+                    <div className="px-3 pb-2 space-y-0.5">
+                      {order.customer && (
+                        <p className="text-xs text-white/60">
+                          <span className="text-white/80 font-medium">{order.customer.name}</span>
+                          {order.customer.phone && (
+                            <span className="text-[#6b7280] ml-1.5">{order.customer.phone}</span>
+                          )}
+                          {order.customer.email && (
+                            <span className="text-[#6b7280] ml-1.5 text-[10px]">{order.customer.email}</span>
+                          )}
+                        </p>
+                      )}
+                      {order.deliveryAddress && (
+                        <p className="text-[11px] text-[#6b7280]">
+                          📍 {order.deliveryAddress.street}, {order.deliveryAddress.zip} {order.deliveryAddress.city}
+                          {order.deliveryAddress.notes && (
+                            <span className="block ml-4 italic">{order.deliveryAddress.notes}</span>
+                          )}
+                        </p>
+                      )}
                     </div>
                   )}
 

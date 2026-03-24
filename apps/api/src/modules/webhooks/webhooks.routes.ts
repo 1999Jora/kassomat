@@ -158,38 +158,7 @@ export async function webhooksRoutes(fastify: FastifyInstance): Promise<void> {
             // Wix webhooks wrap it in { data: { orderId, lineItems, ... } }.
             // Normalise both formats into the native format before passing to service.
             const body = request.body as Record<string, unknown>;
-
-            // Log what Wix actually sent for debugging
-            request.log.info({ body, keys: Object.keys(body ?? {}) }, '[Wix] Received payload');
-
-            let normalised: unknown = body;
-
-            if (!body?.['data'] && (body?.['_id'] || body?.['lineItems'])) {
-              // Wix Automations "Gesamte Nutzlast" format
-              const items = (body['lineItems'] as Array<Record<string, unknown>> | undefined) ?? [];
-              normalised = {
-                data: {
-                  orderId: body['_id'] ?? body['id'],
-                  lineItems: items.map((i) => ({
-                    id: i['_id'] ?? i['id'],
-                    name: i['name'],
-                    quantity: i['quantity'],
-                    price: String(
-                      (i['price'] as Record<string, unknown>)?.['amount'] ??
-                      (i['price'] as Record<string, unknown>)?.['formattedAmount'] ??
-                      i['price'] ??
-                      '0',
-                    ).replace(',', '.'),
-                  })),
-                  buyerInfo: body['buyerInfo'] ?? {},
-                  shippingInfo: body['shippingInfo'],
-                  paymentStatus: body['paymentStatus'] ?? 'PAID',
-                  note: body['buyerNote'] ?? body['note'],
-                },
-              };
-            }
-
-            const order = await wixService.receiveOrder(tenantId, normalised, signature);
+            const order = await wixService.receiveOrder(tenantId, body, signature);
 
             const realtime = getRealtimeService(fastify);
             if (realtime) {
