@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd ../.. && pnpm --filter dashboard build",
+  "buildCommand": "cd ../.. && pnpm --filter @kassomat/types build && cd apps/dashboard && npx vite build",
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
