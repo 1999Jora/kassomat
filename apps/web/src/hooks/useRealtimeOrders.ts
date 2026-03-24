@@ -61,7 +61,7 @@ export function useRealtimeOrders() {
 
     socket.on('order:new', (order: IncomingOrder) => {
       addPendingOrder(order);
-      printThermalReceipt(order);
+      void printThermalReceipt(order);
     });
 
     return () => {

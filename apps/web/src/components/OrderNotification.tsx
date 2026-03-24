@@ -6,20 +6,44 @@ import { jsPDF } from 'jspdf';
 
 // ── Thermal receipt PDF ───────────────────────────────────────────────────────
 
-export function printThermalReceipt(order: IncomingOrder, tenantName = 'Spätii Innsbruck'): void {
+async function loadLogoBase64(): Promise<string | null> {
+  try {
+    const res = await fetch('/logo.png');
+    const blob = await res.blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function printThermalReceipt(order: IncomingOrder, tenantName = 'Spätii Innsbruck'): Promise<void> {
   const W = 80;          // 80 mm roll width
   const MARGIN = 5;
   const PRINT_W = W - MARGIN * 2;
   const LINE_H = 5;
   const COL_R = W - MARGIN;
 
-  // Estimate height
-  const estimatedLines = 20 + order.items.length * 2 + (order.deliveryAddress ? 5 : 0);
-  const H = Math.max(120, estimatedLines * LINE_H + 20);
+  // Estimate height (extra for logo)
+  const estimatedLines = 24 + order.items.length * 2 + (order.deliveryAddress ? 5 : 0);
+  const H = Math.max(140, estimatedLines * LINE_H + 20);
 
   const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'portrait' });
 
-  let y = 8;
+  let y = 6;
+
+  // ── Logo ──────────────────────────────────────────────────────────────────
+  const logoData = await loadLogoBase64();
+  if (logoData) {
+    const logoW = 28;
+    const logoH = 28;
+    doc.addImage(logoData, 'PNG', (W - logoW) / 2, y, logoW, logoH);
+    y += logoH + 2;
+  }
 
   function ctr(text: string, size: number, bold = false) {
     doc.setFont('courier', bold ? 'bold' : 'normal');
@@ -165,10 +189,10 @@ export default function OrderNotification({ onClose }: Props) {
       });
 
       // Always generate PDF regardless of receipt creation result
-      printThermalReceipt(order);
+      await printThermalReceipt(order);
     } catch {
       // Still generate PDF even if API fails
-      printThermalReceipt(order);
+      await printThermalReceipt(order);
     } finally {
       setPrinting(null);
     }
