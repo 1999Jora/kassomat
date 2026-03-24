@@ -349,7 +349,7 @@ async function handleDepBackup(job: Job<DepBackupJobData>): Promise<void> {
         productName: item.productName,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
-        vatRate: item.vatRate as VatRate,
+        vatRate: item.vatRate as unknown as VatRate,
         discount: item.discount,
         totalNet: item.totalNet,
         totalVat: item.totalVat,

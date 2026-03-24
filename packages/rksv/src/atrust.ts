@@ -6,7 +6,12 @@
  */
 
 import axios, { type AxiosInstance, type AxiosError } from 'axios';
-import type { ATrustConfig } from '@kassomat/types';
+/** Internal config for ATrustClient (includes decrypted apiKey) */
+interface ATrustClientConfig {
+  certificateSerial: string;
+  apiKey: string;
+  environment: 'test' | 'production';
+}
 
 export interface CertificateInfo {
   serial: string;
@@ -68,7 +73,7 @@ export class ATrustClient {
   private readonly http: AxiosInstance;
   private readonly baseUrl: string;
 
-  constructor(private readonly config: ATrustConfig) {
+  constructor(private readonly config: ATrustClientConfig) {
     this.baseUrl = config.environment === 'production' ? ATRUST_PROD_URL : ATRUST_TEST_URL;
 
     this.http = axios.create({

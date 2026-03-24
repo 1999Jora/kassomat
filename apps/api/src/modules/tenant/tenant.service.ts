@@ -45,8 +45,8 @@ export interface UpdateTenantInput {
   } | null;
   mypos?: {
     storeId: string;
-    apiKey: string;
-    secretKey: string;
+    apiKey?: string;
+    secretKey?: string;
     terminalSerial?: string | null;
   } | null;
 }
