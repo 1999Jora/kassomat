@@ -4,7 +4,7 @@ import { formatCents, formatRelative } from '../lib/formatters';
 import type { IncomingOrder } from '@kassomat/types';
 import { jsPDF } from 'jspdf';
 
-// ── Thermal receipt PDF ───────────────────────────────────────────────────────
+// ── Shared helpers ────────────────────────────────────────────────────────────
 
 async function loadLogoBase64(): Promise<string | null> {
   try {
@@ -21,28 +21,126 @@ async function loadLogoBase64(): Promise<string | null> {
   }
 }
 
+function makeDoc(W: number, extraLines: number) {
+  const H = Math.max(150, (extraLines + 30) * 5 + 20);
+  return new jsPDF({ unit: 'mm', format: [W, H], orientation: 'portrait' });
+}
+
+// ── 1. AUFTRAGSBON — automatisch beim Eingang (Lieferschein) ──────────────────
+// Groß, fett, Fokus auf Lieferadresse & Artikel — kein Preis nötig
+
+export async function printAuftragsbon(order: IncomingOrder): Promise<void> {
+  const W = 80;
+  const MARGIN = 5;
+  const COL_R = W - MARGIN;
+
+  const lines = 18 + order.items.length + (order.deliveryAddress ? 4 : 0);
+  const doc = makeDoc(W, lines);
+  let y = 6;
+
+  const logoData = await loadLogoBase64();
+  if (logoData) {
+    doc.addImage(logoData, 'PNG', (W - 24) / 2, y, 24, 24);
+    y += 27;
+  }
+
+  function ctr(text: string, size: number, bold = false) {
+    doc.setFont('courier', bold ? 'bold' : 'normal');
+    doc.setFontSize(size);
+    doc.text(text, W / 2, y, { align: 'center' });
+    y += size * 0.45;
+  }
+
+  function line(text: string, size = 9, bold = false, indent = 0) {
+    doc.setFont('courier', bold ? 'bold' : 'normal');
+    doc.setFontSize(size);
+    doc.text(text, MARGIN + indent, y);
+    y += size * 0.45;
+  }
+
+  function sep() {
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(7);
+    const n = Math.floor((COL_R - MARGIN) / doc.getTextWidth('-'));
+    doc.text('-'.repeat(n), MARGIN, y);
+    y += 4;
+  }
+
+  // Header
+  ctr('*** LIEFERAUFTRAG ***', 11, true);
+  y += 2;
+  ctr(`#${order.externalId}`, 14, true);
+  y += 3;
+
+  const dateStr = new Date(order.receivedAt).toLocaleString('de-AT', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+  ctr(dateStr, 8);
+  const payLabel = order.paymentMethod === 'online_paid' ? '✓ BEREITS BEZAHLT' : '⚠ BAR BEI LIEFERUNG';
+  ctr(payLabel, 9, true);
+  y += 3;
+
+  // Kunde
+  sep();
+  if (order.customer) {
+    line('KUNDE:', 8, true);
+    line(order.customer.name, 11, true, 2);
+    if (order.customer.phone) line(`Tel: ${order.customer.phone}`, 10, true, 2);
+    y += 2;
+  }
+
+  // Lieferadresse
+  if (order.deliveryAddress) {
+    sep();
+    line('LIEFERADRESSE:', 8, true);
+    line(order.deliveryAddress.street, 11, true, 2);
+    line(`${order.deliveryAddress.zip} ${order.deliveryAddress.city}`, 10, false, 2);
+    if (order.deliveryAddress.notes) line(`Hinweis: ${order.deliveryAddress.notes}`, 8, false, 2);
+    y += 2;
+  }
+
+  // Artikel
+  sep();
+  line('ARTIKEL:', 8, true);
+  y += 1;
+  for (const item of order.items) {
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(10);
+    doc.text(`${item.quantity}x`, MARGIN + 2, y);
+    doc.setFont('courier', 'normal');
+    doc.text(item.name, MARGIN + 10, y);
+    y += 6;
+  }
+  y += 2;
+
+  // Gesamtbetrag
+  sep();
+  doc.setFont('courier', 'bold');
+  doc.setFontSize(12);
+  doc.text('GESAMT:', MARGIN, y);
+  doc.text(formatCents(order.totalAmount), COL_R, y, { align: 'right' });
+  y += 3;
+
+  doc.save(`Auftrag_${order.externalId}.pdf`);
+}
+
+// ── 2. KASSENBON — manuell beim Übergabe-Klick (mit Preisen & MwSt) ──────────
+
 export async function printThermalReceipt(order: IncomingOrder, tenantName = 'Spätii Innsbruck'): Promise<void> {
-  const W = 80;          // 80 mm roll width
+  const W = 80;
   const MARGIN = 5;
   const PRINT_W = W - MARGIN * 2;
   const LINE_H = 5;
   const COL_R = W - MARGIN;
 
-  // Estimate height (extra for logo)
-  const estimatedLines = 24 + order.items.length * 2 + (order.deliveryAddress ? 5 : 0);
-  const H = Math.max(140, estimatedLines * LINE_H + 20);
-
-  const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'portrait' });
-
+  const lines = 24 + order.items.length * 2 + (order.deliveryAddress ? 5 : 0);
+  const doc = makeDoc(W, lines);
   let y = 6;
 
-  // ── Logo ──────────────────────────────────────────────────────────────────
   const logoData = await loadLogoBase64();
   if (logoData) {
-    const logoW = 28;
-    const logoH = 28;
-    doc.addImage(logoData, 'PNG', (W - logoW) / 2, y, logoW, logoH);
-    y += logoH + 2;
+    doc.addImage(logoData, 'PNG', (W - 28) / 2, y, 28, 28);
+    y += 31;
   }
 
   function ctr(text: string, size: number, bold = false) {
@@ -76,71 +174,48 @@ export async function printThermalReceipt(order: IncomingOrder, tenantName = 'Sp
     y += LINE_H;
   }
 
-  // ── Header ────────────────────────────────────────────────────────────────
   ctr(tenantName.toUpperCase(), 10, true);
   y += 1;
   divider();
 
-  // Date + order number
   const dateStr = new Date(order.receivedAt).toLocaleString('de-AT', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
-  txt(`Datum:  ${dateStr}`, 7);
-  txt(`Quelle: ${order.source === 'wix' ? 'Wix Online Shop' : 'Lieferando'}`, 7);
-  txt(`Bon-Nr: #${order.externalId}`, 7);
-
-  const payLabel = order.paymentMethod === 'online_paid'
-    ? 'Online bezahlt'
-    : 'Bar bei Lieferung';
-  txt(`Zahlung: ${payLabel}`, 7);
+  txt(`Datum:   ${dateStr}`, 7);
+  txt(`Bon-Nr:  #${order.externalId}`, 7);
+  txt(`Zahlung: ${order.paymentMethod === 'online_paid' ? 'Online bezahlt' : 'Bar bei Lieferung'}`, 7);
   y += 1;
 
-  // ── Customer ──────────────────────────────────────────────────────────────
   if (order.customer) {
     divider(true);
-    txt('KUNDE:', 7, true);
-    txt(order.customer.name, 8, true, 2);
-    if (order.customer.phone) txt(`Tel: ${order.customer.phone}`, 7, false, 2);
-    if (order.customer.email) txt(order.customer.email, 6, false, 2);
+    txt(order.customer.name, 8, true);
+    if (order.customer.phone) txt(`Tel: ${order.customer.phone}`, 7, false);
     y += 1;
   }
 
-  // ── Delivery address ──────────────────────────────────────────────────────
   if (order.deliveryAddress) {
     divider(true);
-    txt('LIEFERADRESSE:', 7, true);
+    txt('Lieferadresse:', 7, true);
     txt(order.deliveryAddress.street, 7, false, 2);
     txt(`${order.deliveryAddress.zip} ${order.deliveryAddress.city}`, 7, false, 2);
-    if (order.deliveryAddress.notes) txt(`Hinweis: ${order.deliveryAddress.notes}`, 6, false, 2);
     y += 1;
   }
 
-  // ── Items ─────────────────────────────────────────────────────────────────
   divider();
-  txt('ARTIKEL', 7, true);
-  y += 1;
   for (const item of order.items) {
     row(`${item.quantity}x ${item.name}`, formatCents(item.totalPrice), 8);
   }
   y += 1;
-
-  // ── Total ─────────────────────────────────────────────────────────────────
   divider();
   row('GESAMT', formatCents(order.totalAmount), 10, true);
   y += 1;
-
-  // ── VAT note ─────────────────────────────────────────────────────────────
   divider(true);
   const vatAmt = Math.round(order.totalAmount * 20 / 120);
   txt(`inkl. 20% MwSt.: ${formatCents(vatAmt)}`, 6);
   y += 2;
-
-  // ── Footer ────────────────────────────────────────────────────────────────
   divider();
   ctr('Danke fur Ihre Bestellung!', 8, true);
   ctr('www.spaetii-innsbruck.at', 6);
-  y += 2;
 
   doc.save(`Bon_${order.externalId}.pdf`);
 }
@@ -175,24 +250,16 @@ export default function OrderNotification({ onClose }: Props) {
 
       await fetch(`${apiUrl}/orders/${order.id}/receipt`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          payment: {
-            method: paymentMethod,
-            amountPaid: order.totalAmount,
-            tip: 0,
-          },
-        }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ payment: { method: paymentMethod, amountPaid: order.totalAmount, tip: 0 } }),
       });
 
-      // Always generate PDF regardless of receipt creation result
       await printThermalReceipt(order);
+      // Bestellung nach Bon-Druck aus der Liste entfernen
+      removePendingOrder(order.id);
     } catch {
-      // Still generate PDF even if API fails
       await printThermalReceipt(order);
+      removePendingOrder(order.id);
     } finally {
       setPrinting(null);
     }

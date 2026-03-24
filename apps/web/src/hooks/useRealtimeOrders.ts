@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAppStore } from '../store/useAppStore';
 import type { IncomingOrder } from '@kassomat/types';
-import { printThermalReceipt } from '../components/OrderNotification';
+import { printAuftragsbon } from '../components/OrderNotification';
 
 // ── Fetch pending orders from API ─────────────────────────────────────────────
 
@@ -61,7 +61,7 @@ export function useRealtimeOrders() {
 
     socket.on('order:new', (order: IncomingOrder) => {
       addPendingOrder(order);
-      void printThermalReceipt(order);
+      void printAuftragsbon(order);
     });
 
     return () => {
