@@ -55,6 +55,7 @@ export default function DriverNavPage() {
   const [loadingDrivers, setLoadingDrivers] = useState(true);
   const [activeDriver, setActiveDriver] = useState<Driver | null>(null);
   const [myDeliveries, setMyDeliveries] = useState<Delivery[]>([]);
+  const [sortedDeliveries, setSortedDeliveries] = useState<Delivery[]>([]);
   const [currentStopIdx, setCurrentStopIdx] = useState(0);
   const [routeSteps, setRouteSteps] = useState<any[]>([]);
   const [currentStepIdx] = useState(0);
@@ -203,8 +204,8 @@ export default function DriverNavPage() {
 
       const startCoord: [number, number] = [position!.coords.longitude, position!.coords.latitude];
 
-      // Geocode addresses with rate limiting
-      const coords: [number, number][] = [startCoord];
+      // Geocode all addresses
+      const geocoded: { delivery: Delivery; coord: [number, number] }[] = [];
       for (const delivery of activeDeliveries) {
         const order = delivery.order as any;
         const addr = `${order?.deliveryAddress?.street ?? order?.deliveryStreet ?? ''}, ${order?.deliveryAddress?.zip ?? order?.deliveryZip ?? ''} ${order?.deliveryAddress?.city ?? order?.deliveryCity ?? ''}`;
@@ -212,10 +213,30 @@ export default function DriverNavPage() {
         if (now - lastGeocode.current < 1100) await new Promise(r => setTimeout(r, 1100 - (now - lastGeocode.current)));
         lastGeocode.current = Date.now();
         const coord = await geocode(addr);
-        if (coord) coords.push(coord);
+        if (coord) geocoded.push({ delivery, coord });
       }
 
-      if (coords.length < 2) return;
+      if (geocoded.length === 0) return;
+
+      // Nearest-neighbor sort: always go to closest remaining stop first
+      const sorted: typeof geocoded = [];
+      const remaining = [...geocoded];
+      let cur: [number, number] = startCoord;
+      while (remaining.length > 0) {
+        let nearestIdx = 0;
+        let nearestDist = Infinity;
+        remaining.forEach((s, i) => {
+          const d = (s.coord[0] - cur[0]) ** 2 + (s.coord[1] - cur[1]) ** 2;
+          if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
+        });
+        sorted.push(remaining[nearestIdx]!);
+        cur = remaining[nearestIdx]!.coord;
+        remaining.splice(nearestIdx, 1);
+      }
+
+      setSortedDeliveries(sorted.map(s => s.delivery));
+      const coords: [number, number][] = [startCoord, ...sorted.map(s => s.coord)];
+
       const route = await getRoute(coords);
       if (!route || !mapRef.current) return;
 
@@ -231,20 +252,17 @@ export default function DriverNavPage() {
           id: 'route-line',
           type: 'line',
           source: 'route',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
           paint: { 'line-color': DRIVER_COLOR, 'line-width': 4, 'line-opacity': 0.85 },
         });
       }
 
-      // Add stop markers
-      activeDeliveries.forEach((_d, i) => {
-        if (coords[i + 1]) {
-          const el = document.createElement('div');
-          el.style.cssText = `width:28px;height:28px;background:${DRIVER_COLOR};border:2px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;font-size:12px;`;
-          el.textContent = String(i + 1);
-          new maplibregl.Marker({ element: el })
-            .setLngLat(coords[i + 1]!)
-            .addTo(map);
-        }
+      // Add stop markers in optimized order
+      sorted.forEach((s, i) => {
+        const el = document.createElement('div');
+        el.style.cssText = `width:28px;height:28px;background:${DRIVER_COLOR};border:2px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;font-size:12px;`;
+        el.textContent = String(i + 1);
+        new maplibregl.Marker({ element: el }).setLngLat(s.coord).addTo(map);
       });
     }
 
@@ -263,10 +281,11 @@ export default function DriverNavPage() {
 
   // Mark stop as delivered
   async function handleDelivered() {
-    const activeDeliveries = myDeliveries.filter(d => d.status !== 'delivered' && d.status !== 'cancelled');
-    const currentDelivery = activeDeliveries[currentStopIdx];
-    if (!currentDelivery) return;
-    await fetch(`${API}/deliveries/${currentDelivery.id}/delivered`, { method: 'POST' });
+    const active = myDeliveries.filter(d => d.status !== 'delivered' && d.status !== 'cancelled');
+    const ordered = sortedDeliveries.length > 0 ? sortedDeliveries.filter(d => d.status !== 'delivered' && d.status !== 'cancelled') : active;
+    const delivery = ordered[currentStopIdx];
+    if (!delivery) return;
+    await fetch(`${API}/deliveries/${delivery.id}/delivered`, { method: 'POST' });
     setCurrentStopIdx(prev => prev + 1);
   }
 
@@ -302,7 +321,9 @@ export default function DriverNavPage() {
   }
 
   const activeDeliveries = myDeliveries.filter(d => d.status !== 'delivered' && d.status !== 'cancelled');
-  const currentDelivery = activeDeliveries[currentStopIdx];
+  // Use optimized order if available, otherwise fall back to original order
+  const orderedDeliveries = sortedDeliveries.length > 0 ? sortedDeliveries.filter(d => d.status !== 'delivered' && d.status !== 'cancelled') : activeDeliveries;
+  const currentDelivery = orderedDeliveries[currentStopIdx];
   const currentStep = routeSteps[currentStepIdx];
   const completedStops = myDeliveries.filter(d => d.status === 'delivered').length;
   const totalStops = myDeliveries.length;

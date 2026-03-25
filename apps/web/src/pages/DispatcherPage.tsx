@@ -45,6 +45,7 @@ export default function DispatcherPage() {
   const driverTimeLabelRefs = useRef<Record<string, HTMLElement>>({});
   const geocodeCacheRef = useRef<Record<string, [number, number]>>({});
   const lastGeocodeRef = useRef<number>(0);
+  const routeGeometriesRef = useRef<Record<string, any>>({});
   // Always-current snapshot for callbacks (avoids stale closures in map event handlers)
   const stateRef = useRef({ driverLocations, deliveries, drivers });
   useEffect(() => { stateRef.current = { driverLocations, deliveries, drivers }; });
@@ -193,40 +194,44 @@ export default function DispatcherPage() {
     return null;
   }
 
-  // Draw dashed route lines from each driver's GPS position to their delivery stops
+  // Fetch OSRM road route for a list of coordinates
+  async function getOsrmRoute(coords: [number, number][]): Promise<any | null> {
+    if (coords.length < 2) return null;
+    const coordStr = coords.map(([lng, lat]) => `${lng},${lat}`).join(';');
+    try {
+      const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordStr}?geometries=geojson&overview=full`);
+      const data = await res.json();
+      return data.routes?.[0]?.geometry ?? null;
+    } catch {}
+    return null;
+  }
+
+  // Apply cached OSRM geometries as route lines on the map
   function drawRouteLines(map: maplibregl.Map) {
     if (!map.isStyleLoaded()) return;
-    const { driverLocations: locs, deliveries: dels, drivers: drvs } = stateRef.current;
-    Object.entries(locs).forEach(([driverId, loc]) => {
+    const { drivers: drvs } = stateRef.current;
+    Object.entries(routeGeometriesRef.current).forEach(([driverId, geometry]) => {
       const driver = drvs.find(d => d.id === driverId);
-      if (!driver) return;
-      const driverDels = dels.filter(d => d.driverId === driverId && d.status !== 'delivered' && d.status !== 'cancelled');
-      const features = driverDels.flatMap(delivery => {
-        const order = delivery.order as any;
-        const addr = [order?.deliveryStreet ?? '', order?.deliveryCity ?? ''].filter(Boolean).join(', ');
-        if (!addr) return [];
-        const coord = geocodeCacheRef.current[addr];
-        if (!coord) return [];
-        return [{ type: 'Feature' as const, geometry: { type: 'LineString' as const, coordinates: [[loc.lng, loc.lat], coord] }, properties: {} }];
-      });
+      if (!driver || !geometry) return;
       const sourceId = `route-${driverId}`;
       const layerId = `route-line-${driverId}`;
-      const geojson = { type: 'FeatureCollection' as const, features: features as any[] };
       if (map.getSource(sourceId)) {
-        (map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(geojson);
-      } else if (features.length > 0) {
-        map.addSource(sourceId, { type: 'geojson', data: geojson });
-        map.addLayer({ id: layerId, type: 'line', source: sourceId, paint: { 'line-color': driver.color, 'line-width': 2.5, 'line-opacity': 0.8, 'line-dasharray': [4, 3] } });
+        (map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(geometry);
+      } else {
+        map.addSource(sourceId, { type: 'geojson', data: geometry });
+        map.addLayer({ id: layerId, type: 'line', source: sourceId, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': driver.color, 'line-width': 3, 'line-opacity': 0.85 } });
       }
     });
   }
 
-  // Geocode delivery addresses + draw route lines whenever locations/deliveries change
+  // Geocode addresses → nearest-neighbor sort stops → fetch OSRM route per driver
   useEffect(() => {
     let cancelled = false;
     async function update() {
       const map = mapRef.current;
       if (!map) return;
+
+      // 1. Geocode any uncached addresses
       const addrs = new Set<string>();
       deliveries.filter(d => d.status !== 'delivered' && d.status !== 'cancelled').forEach(delivery => {
         const order = delivery.order as any;
@@ -237,6 +242,41 @@ export default function DispatcherPage() {
         if (cancelled) return;
         await geocodeAddr(addr);
       }
+      if (cancelled) return;
+
+      // 2. For each driver with a GPS location, fetch OSRM road route
+      for (const [driverId, loc] of Object.entries(driverLocations)) {
+        if (cancelled) return;
+        const driverDels = deliveries.filter(d => d.driverId === driverId && d.status !== 'delivered' && d.status !== 'cancelled');
+        const stopCoords: [number, number][] = [];
+        for (const delivery of driverDels) {
+          const order = delivery.order as any;
+          const addr = [order?.deliveryStreet ?? '', order?.deliveryCity ?? ''].filter(Boolean).join(', ');
+          const coord = geocodeCacheRef.current[addr];
+          if (coord) stopCoords.push(coord);
+        }
+        if (stopCoords.length === 0) continue;
+
+        // Nearest-neighbor sort stops from driver position
+        const sorted: [number, number][] = [];
+        const remaining = [...stopCoords];
+        let cur: [number, number] = [loc.lng, loc.lat];
+        while (remaining.length > 0) {
+          let nearestIdx = 0;
+          let nearestDist = Infinity;
+          remaining.forEach((c, i) => {
+            const d = (c[0] - cur[0]) ** 2 + (c[1] - cur[1]) ** 2;
+            if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
+          });
+          sorted.push(remaining[nearestIdx]!);
+          cur = remaining[nearestIdx]!;
+          remaining.splice(nearestIdx, 1);
+        }
+
+        const geometry = await getOsrmRoute([[loc.lng, loc.lat], ...sorted]);
+        if (geometry) routeGeometriesRef.current[driverId] = geometry;
+      }
+
       if (cancelled || !mapRef.current?.isStyleLoaded()) return;
       drawRouteLines(mapRef.current);
     }
