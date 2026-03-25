@@ -393,25 +393,24 @@ export class WixProductsService {
         sortOrderCounter,
       );
 
-      const productData = {
+      // Fields synced from Wix on every update (price, name, category, visibility)
+      const syncedFields = {
         name: wixProduct.name,
         price: priceInCents,
-        vatRate: toVatRateEnum(20), // default 20%; user can change later
         categoryId,
         isActive: wixProduct.visible,
         wixProductId: wixProduct.id,
         tenantId,
-        // Clear soft-delete if the product was previously deleted
         deletedAt: null,
       };
 
       const existingLocalId = existingByWixId.get(wixProduct.id);
 
       if (existingLocalId) {
-        // Update
+        // Update — preserve vatRate so manual changes aren't overwritten
         await prisma.product.update({
           where: { id: existingLocalId },
-          data: productData,
+          data: syncedFields,
         });
         updated++;
       } else {
@@ -422,14 +421,17 @@ export class WixProductsService {
         });
 
         if (softDeleted) {
+          // Restore soft-deleted product, preserve existing vatRate
           await prisma.product.update({
             where: { id: softDeleted.id },
-            data: productData,
+            data: syncedFields,
           });
           updated++;
         } else {
-          // Create new
-          await prisma.product.create({ data: productData });
+          // Create new — default to 20% MwSt; user can change per product
+          await prisma.product.create({
+            data: { ...syncedFields, vatRate: toVatRateEnum(20) },
+          });
           created++;
         }
       }

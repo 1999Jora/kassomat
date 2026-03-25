@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
-import type { Tenant, TenantSettings, Category } from '@kassomat/types';
+import type { Tenant, TenantSettings, Category, Product } from '@kassomat/types';
 import api, { createNullReceipt, createTrainingReceipt, createClosingReceipt, getPrintMode, setPrintMode, type PrintMode } from '../lib/api';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -94,7 +94,7 @@ function Toggle({
 
 // ─── Tab types ────────────────────────────────────────────────────────────────
 
-type Tab = 'general' | 'atrust' | 'lieferando' | 'wix' | 'mypos' | 'printer' | 'categories';
+type Tab = 'general' | 'atrust' | 'lieferando' | 'wix' | 'mypos' | 'printer' | 'categories' | 'articles';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'general', label: 'Allgemein' },
@@ -104,6 +104,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'mypos', label: 'myPOS' },
   { id: 'printer', label: 'Drucker' },
   { id: 'categories', label: 'Kategorien' },
+  { id: 'articles', label: 'Artikel / MwSt' },
 ];
 
 // ─── API response type ────────────────────────────────────────────────────────
@@ -1028,6 +1029,129 @@ function CategoriesTab() {
   );
 }
 
+// ─── Articles tab ─────────────────────────────────────────────────────────────
+
+const VAT_OPTIONS: Array<{ value: 0 | 10 | 13 | 20; label: string }> = [
+  { value: 0, label: '0%' },
+  { value: 10, label: '10%' },
+  { value: 13, label: '13%' },
+  { value: 20, label: '20%' },
+];
+
+function ArticlesTab() {
+  const qc = useQueryClient();
+  const [search, setSearch] = useState('');
+
+  const { data: products = [], isLoading } = useQuery<Product[]>({
+    queryKey: ['products-all'],
+    queryFn: async () => {
+      const { data } = await api.get<{ success: true; data: { items: Product[] } }>(
+        '/products?pageSize=200',
+      );
+      return data.data.items;
+    },
+  });
+
+  const { data: categories = [] } = useQuery<Category[]>({
+    queryKey: ['categories'],
+    queryFn: async () => {
+      const { data } = await api.get<{ success: true; data: Category[] }>('/categories');
+      return data.data;
+    },
+  });
+
+  const vatMutation = useMutation({
+    mutationFn: ({ id, vatRate }: { id: string; vatRate: 0 | 10 | 13 | 20 }) =>
+      api.patch('/products/' + id, { vatRate }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['products-all'] }),
+    onError: () => toast.error('Fehler beim Speichern'),
+  });
+
+  const categoryMap = new Map(categories.map((c) => [c.id, c]));
+
+  const filtered = products.filter((p) =>
+    p.name.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  // Group by category
+  const grouped = new Map<string, { category: Category | undefined; products: Product[] }>();
+  for (const p of filtered) {
+    const cat = categoryMap.get(p.categoryId);
+    const key = p.categoryId;
+    if (!grouped.has(key)) grouped.set(key, { category: cat, products: [] });
+    grouped.get(key)!.products.push(p);
+  }
+
+  if (isLoading) {
+    return <div className="text-white/40 text-sm py-4 text-center">Laden…</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-white/50 text-xs">MwSt-Satz pro Artikel anpassen. Änderungen werden sofort gespeichert.</p>
+        <Input
+          placeholder="Suchen…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-[200px]"
+        />
+      </div>
+
+      {Array.from(grouped.entries()).map(([catId, { category, products: catProducts }]) => (
+        <div key={catId}>
+          <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2 flex items-center gap-2">
+            {category && (
+              <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: category.color }} />
+            )}
+            {category?.name ?? 'Ohne Kategorie'}
+            <span className="text-white/20 normal-case font-normal">({catProducts.length})</span>
+          </p>
+          <div className="space-y-1">
+            {catProducts.map((product) => (
+              <div
+                key={product.id}
+                className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/5"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm truncate">{product.name}</p>
+                  <p className="text-white/30 text-xs font-mono">
+                    €{(product.price / 100).toFixed(2).replace('.', ',')}
+                  </p>
+                </div>
+                <select
+                  value={
+                    typeof product.vatRate === 'string'
+                      ? parseInt((product.vatRate as string).replace('VAT_', ''), 10)
+                      : product.vatRate
+                  }
+                  onChange={(e) =>
+                    vatMutation.mutate({
+                      id: product.id,
+                      vatRate: parseInt(e.target.value) as 0 | 10 | 13 | 20,
+                    })
+                  }
+                  className="bg-[#080a0c] border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:border-[#00e87a]/60 transition-colors"
+                >
+                  {VAT_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      MwSt {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {filtered.length === 0 && (
+        <p className="text-white/40 text-sm py-4 text-center">Keine Artikel gefunden</p>
+      )}
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -1091,6 +1215,7 @@ export default function SettingsPage() {
         {activeTab === 'mypos' && <MyPOSTab settings={tenant.settings} />}
         {activeTab === 'printer' && <PrinterTab settings={tenant.settings} />}
         {activeTab === 'categories' && <CategoriesTab />}
+        {activeTab === 'articles' && <ArticlesTab />}
       </div>
     </div>
   );
