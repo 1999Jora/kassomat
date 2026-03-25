@@ -71,7 +71,7 @@ export default function DriversPage() {
       <div className="space-y-2">
         {loading && <p className="text-white/30 text-sm">Laden...</p>}
         {drivers.map(d => (
-          <div key={d.id} className="bg-[#181c27] rounded-xl p-4 flex items-center gap-3 border border-white/5">
+          <div key={d.id} className="bg-[#0e1115] rounded-xl p-4 flex items-center gap-3 border border-white/5">
             <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
             <div className="flex-1 min-w-0">
               <p className="text-white font-medium">{d.name}</p>
@@ -89,19 +89,19 @@ export default function DriversPage() {
       </div>
 
       {/* Add driver form */}
-      <div className="bg-[#181c27] rounded-xl p-4 border border-white/8 space-y-3">
+      <div className="bg-[#0e1115] rounded-xl p-4 border border-white/[0.06] space-y-3">
         <h3 className="text-white font-medium text-sm">Neuer Fahrer</h3>
         <input
           value={name}
           onChange={e => setName(e.target.value)}
           placeholder="Name"
-          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none"
+          className="w-full bg-[#080a0c] border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-[#00e87a]/60 focus:ring-1 focus:ring-[#00e87a]/20 transition-colors placeholder:text-white/30"
         />
         <input
           value={pin}
           onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
           placeholder="PIN (4-stellig)"
-          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none font-mono"
+          className="w-full bg-[#080a0c] border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-[#00e87a]/60 focus:ring-1 focus:ring-[#00e87a]/20 transition-colors placeholder:text-white/30 font-mono"
           inputMode="numeric"
         />
         <div className="flex gap-2">
