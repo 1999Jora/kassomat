@@ -156,4 +156,26 @@ export async function createClosingReceipt(cashRegisterId = 'KASSE-01'): Promise
   return data.data;
 }
 
+export async function printReceiptById(receiptId: string): Promise<{ receiptUrl: string }> {
+  const { data } = await api.get<ApiSuccess<{ receiptUrl: string }>>(`/receipts/${receiptId}/print`);
+  return data.data;
+}
+
+export function getDigitalReceiptUrl(receiptId: string): string {
+  const base = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
+  return `${base}/receipts/${receiptId}/digital`;
+}
+
+// ── Print mode (stored per-device in localStorage) ───────────────────────────
+
+export type PrintMode = 'printer' | 'pdf' | 'none';
+
+export function getPrintMode(): PrintMode {
+  return (localStorage.getItem('kassomat_print_mode') as PrintMode | null) ?? 'none';
+}
+
+export function setPrintMode(mode: PrintMode): void {
+  localStorage.setItem('kassomat_print_mode', mode);
+}
+
 export default api;

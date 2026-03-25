@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import type { Tenant, TenantSettings, Category } from '@kassomat/types';
-import api, { createNullReceipt, createTrainingReceipt, createClosingReceipt } from '../lib/api';
+import api, { createNullReceipt, createTrainingReceipt, createClosingReceipt, getPrintMode, setPrintMode, type PrintMode } from '../lib/api';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -724,6 +724,13 @@ function PrinterTab({ settings }: { settings: TenantSettings }) {
   );
   const [host, setHost] = useState(settings.printerIp ?? '');
   const [port, setPort] = useState(settings.printerPort?.toString() ?? '9100');
+  const [printMode, setPrintModeState] = useState<PrintMode>(getPrintMode());
+
+  function handlePrintModeChange(mode: PrintMode) {
+    setPrintModeState(mode);
+    setPrintMode(mode);
+    toast.success('Druckmodus gespeichert');
+  }
 
   const mutation = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.patch('/tenant', body),
@@ -749,8 +756,46 @@ function PrinterTab({ settings }: { settings: TenantSettings }) {
     File: 'Datei (Test)',
   };
 
+  const printModes: { id: PrintMode; label: string; desc: string }[] = [
+    { id: 'printer', label: 'Bondrucker', desc: 'ESC/POS an konfigurierten Drucker senden' },
+    { id: 'pdf', label: 'PDF / Browser', desc: 'Digitalen Bon im Browser-Tab öffnen' },
+    { id: 'none', label: 'Kein Druck', desc: 'Nur Bon erstellen, nicht drucken' },
+  ];
+
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      {/* Print mode */}
+      <Field label="Druckmodus nach Bon-Erstellung">
+        <div className="space-y-2 mt-1">
+          {printModes.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => handlePrintModeChange(m.id)}
+              className={clsx(
+                'w-full flex items-start gap-3 px-4 py-3 rounded-xl border text-left transition-colors',
+                printMode === m.id
+                  ? 'border-[#00e87a] bg-[#00e87a]/10'
+                  : 'border-white/10 bg-[#080a0c] hover:border-white/20',
+              )}
+            >
+              <span className={clsx(
+                'mt-0.5 w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center',
+                printMode === m.id ? 'border-[#00e87a]' : 'border-white/30',
+              )}>
+                {printMode === m.id && <span className="w-2 h-2 rounded-full bg-[#00e87a]" />}
+              </span>
+              <div>
+                <p className={clsx('text-sm font-medium', printMode === m.id ? 'text-[#00e87a]' : 'text-white/80')}>{m.label}</p>
+                <p className="text-xs text-white/40 mt-0.5">{m.desc}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <div className="border-t border-white/[0.06] pt-5" />
+
       <Field label="Druckertyp">
         <div className="flex gap-2">
           {printerTypes.map((t) => (

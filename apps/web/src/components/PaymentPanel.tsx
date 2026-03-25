@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { formatCents } from '../lib/formatters';
 import NumPad from './NumPad';
-import api, { createReceipt } from '../lib/api';
+import api, { createReceipt, printReceiptById, getDigitalReceiptUrl, getPrintMode } from '../lib/api';
 import type { Receipt } from '@kassomat/types';
 import { io, Socket } from 'socket.io-client';
 
@@ -353,6 +353,22 @@ export default function PaymentPanel() {
     }, CARD_TIMEOUT_MS);
   }
 
+  // ── Print after receipt creation ─────────────────────────────────────────────
+
+  async function triggerPrint(receiptId: string) {
+    const mode = getPrintMode();
+    if (mode === 'printer') {
+      try {
+        await printReceiptById(receiptId);
+      } catch {
+        // Print errors are non-fatal — receipt was already created
+      }
+    } else if (mode === 'pdf') {
+      const url = getDigitalReceiptUrl(receiptId);
+      window.open(url, '_blank', 'noopener');
+    }
+  }
+
   // ── Tip ──────────────────────────────────────────────────────────────────────
 
   function addTip(pct: number) {
@@ -386,7 +402,10 @@ export default function PaymentPanel() {
           channel: 'direct',
         });
 
-        // Step 2: Initiate the terminal payment
+        // Step 2: Trigger print (non-blocking)
+        void triggerPrint(receipt.id);
+
+        // Step 3: Initiate the terminal payment
         const { data: initiateData } = await api.post<{
           success: boolean;
           data: { transactionId: string; status: 'pending' };
@@ -409,7 +428,7 @@ export default function PaymentPanel() {
     } else {
       // ── Cash / Online flow ─────────────────────────────────────────────────
       try {
-        await createReceipt({
+        const receipt = await createReceipt({
           items: cartItems.map((i) => ({
             productId: i.productId,
             quantity: i.quantity,
@@ -426,6 +445,7 @@ export default function PaymentPanel() {
           channel: 'direct',
         });
 
+        void triggerPrint(receipt.id);
         setChange(cashChange);
         setDone(true);
         setTimeout(() => {
