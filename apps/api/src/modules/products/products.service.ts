@@ -5,7 +5,7 @@ import { parse } from 'csv-parse/sync';
 export interface CreateProductInput {
   name: string;
   price: number;
-  vatRate: 0 | 10 | 20;
+  vatRate: 0 | 10 | 13 | 20;
   categoryId: string;
   pluCode?: string | null;
   barcode?: string | null;
@@ -26,8 +26,8 @@ export interface ListProductsInput {
   isActive?: boolean;
 }
 
-const VAT_MAP: Record<string, 'VAT_0' | 'VAT_10' | 'VAT_20'> = {
-  '0': 'VAT_0', '10': 'VAT_10', '20': 'VAT_20',
+const VAT_MAP: Record<string, 'VAT_0' | 'VAT_10' | 'VAT_13' | 'VAT_20'> = {
+  '0': 'VAT_0', '10': 'VAT_10', '13': 'VAT_13', '20': 'VAT_20',
 };
 
 export class ProductsService {

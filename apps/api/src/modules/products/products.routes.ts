@@ -6,7 +6,7 @@ import { requireRole } from '../../middleware/auth';
 const createProductSchema = z.object({
   name: z.string().min(1, 'Name erforderlich'),
   price: z.number().int().min(0, 'Preis muss >= 0 sein'),
-  vatRate: z.union([z.literal(0), z.literal(10), z.literal(20)]),
+  vatRate: z.union([z.literal(0), z.literal(10), z.literal(13), z.literal(20)]),
   categoryId: z.string().uuid('Ungültige Kategorie-ID'),
   pluCode: z.string().nullable().optional(),
   barcode: z.string().nullable().optional(),

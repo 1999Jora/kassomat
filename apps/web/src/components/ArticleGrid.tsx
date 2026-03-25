@@ -186,7 +186,9 @@ export default function ArticleGrid() {
                       productId: product.id,
                       name: product.name,
                       price: product.price,
-                      vatRate: product.vatRate,
+                      vatRate: typeof product.vatRate === 'string'
+                        ? (parseInt((product.vatRate as string).replace('VAT_', ''), 10) as 0 | 10 | 13 | 20)
+                        : product.vatRate,
                     });
                   }}
                   className="rounded-xl flex flex-col items-start justify-between p-3 text-left transition-all duration-100 hover:scale-[1.02] active:scale-[0.97] border min-h-[88px] group"
