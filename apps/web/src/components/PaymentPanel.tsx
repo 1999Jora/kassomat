@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { formatCents } from '../lib/formatters';
 import NumPad from './NumPad';
-import api, { createReceipt, printReceiptById, getDigitalReceiptUrl, getPrintMode } from '../lib/api';
+import api, { createReceipt, printReceiptById, getDigitalReceiptUrl, getPrintMode, waitForRksvSignature } from '../lib/api';
 import type { Receipt } from '@kassomat/types';
 import { io, Socket } from 'socket.io-client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -160,26 +160,26 @@ function CardTimeoutScreen({
 
 // ─── Success screen ───────────────────────────────────────────────────────────
 
-function SuccessScreen({ change }: { change: number }) {
+function SuccessScreen({ change, signed }: { change: number; signed: boolean }) {
   return (
     <div className="flex flex-col h-full items-center justify-center gap-4 bg-[#080a0c]">
       <div className="w-20 h-20 rounded-full bg-[#00e87a]/10 border border-[#00e87a]/20 flex items-center justify-center">
-        <svg
-          width="32"
-          height="32"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#00e87a"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
+        {signed ? (
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00e87a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        ) : (
+          <svg className="animate-spin" width="32" height="32" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-20" cx="12" cy="12" r="10" stroke="#00e87a" strokeWidth="3" />
+            <path className="opacity-80" fill="#00e87a" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+        )}
       </div>
       <div className="text-center">
         <p className="text-[#00e87a] font-bold text-lg">Bon erstellt</p>
-        <p className="text-[#6b7280] text-xs mt-1">RKSV-Signatur läuft...</p>
+        <p className="text-[#6b7280] text-xs mt-1">
+          {signed ? 'RKSV-Signatur abgeschlossen ✓' : 'RKSV-Signatur läuft...'}
+        </p>
       </div>
       {change > 0 && (
         <div className="bg-[#0e1115] rounded-xl border border-white/[0.06] px-6 py-3 text-center">
@@ -209,6 +209,7 @@ export default function PaymentPanel() {
   const [tip, setTip] = useState(0);
   const [processing, setProcessing] = useState(false);
   const [done, setDone] = useState(false);
+  const [signed, setSigned] = useState(false);
   const [change, setChange] = useState(0);
 
   // References for card payment polling / timeout
@@ -275,13 +276,7 @@ export default function PaymentPanel() {
     void queryClient.invalidateQueries({ queryKey: ['receipts-recent'] });
     void queryClient.invalidateQueries({ queryKey: ['analytics'] });
     setDone(true);
-    setTimeout(() => {
-      clearCart();
-      setDone(false);
-      setProcessing(false);
-      setCardPaymentState('idle', null);
-      setMobileTab('articles');
-    }, 2000);
+    setCardPaymentState('idle', null);
   }
 
   function handleCardDeclined() {
@@ -359,20 +354,35 @@ export default function PaymentPanel() {
     }, CARD_TIMEOUT_MS);
   }
 
-  // ── Print after receipt creation ─────────────────────────────────────────────
+  // ── Wait for RKSV, then print ─────────────────────────────────────────────────
 
-  async function triggerPrint(receiptId: string) {
+  async function waitAndPrint(receiptId: string) {
+    // Wait for RKSV signature (shows spinner in SuccessScreen)
+    await waitForRksvSignature(receiptId);
+    setSigned(true);
+
     const mode = getPrintMode();
     if (mode === 'printer') {
       try {
         await printReceiptById(receiptId);
       } catch {
-        // Print errors are non-fatal — receipt was already created
+        // Print errors are non-fatal
       }
     } else if (mode === 'pdf') {
       const url = getDigitalReceiptUrl(receiptId);
       window.open(url, '_blank', 'noopener');
     }
+
+    // After print/pdf, clear cart after short delay
+    setTimeout(() => {
+      clearCart();
+      setCashInput('');
+      setTip(0);
+      setDone(false);
+      setSigned(false);
+      setProcessing(false);
+      setMobileTab('articles');
+    }, 1500);
   }
 
   // ── Tip ──────────────────────────────────────────────────────────────────────
@@ -451,19 +461,11 @@ export default function PaymentPanel() {
           channel: 'direct',
         });
 
-        void triggerPrint(receipt.id);
         void queryClient.invalidateQueries({ queryKey: ['receipts-recent'] });
         void queryClient.invalidateQueries({ queryKey: ['analytics'] });
         setChange(cashChange);
         setDone(true);
-        setTimeout(() => {
-          clearCart();
-          setCashInput('');
-          setTip(0);
-          setDone(false);
-          setProcessing(false);
-          setMobileTab('articles');
-        }, 2000);
+        void waitAndPrint(receipt.id);
       } catch {
         setProcessing(false);
       }
@@ -524,7 +526,7 @@ export default function PaymentPanel() {
   // ── Success screen ────────────────────────────────────────────────────────
 
   if (done) {
-    return <SuccessScreen change={change} />;
+    return <SuccessScreen change={change} signed={signed} />;
   }
 
   // ── Main panel ────────────────────────────────────────────────────────────

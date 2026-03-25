@@ -156,6 +156,29 @@ export async function createClosingReceipt(cashRegisterId = 'KASSE-01'): Promise
   return data.data;
 }
 
+export async function getReceiptById(receiptId: string): Promise<Receipt> {
+  const { data } = await api.get<ApiSuccess<Receipt>>(`/receipts/${receiptId}`);
+  return data.data;
+}
+
+/** Poll until receipt is signed (or timeout). Returns the signed receipt. */
+export async function waitForRksvSignature(
+  receiptId: string,
+  timeoutMs = 30_000,
+  intervalMs = 2_000,
+): Promise<Receipt> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const receipt = await getReceiptById(receiptId);
+    if (receipt.status === 'signed' || receipt.status === 'printed' || receipt.status === 'cancelled') {
+      return receipt;
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  // Timeout — return receipt as-is (QR code might be missing)
+  return getReceiptById(receiptId);
+}
+
 export async function printReceiptById(receiptId: string): Promise<{ receiptUrl: string }> {
   const { data } = await api.get<ApiSuccess<{ receiptUrl: string }>>(`/receipts/${receiptId}/print`);
   return data.data;
@@ -171,7 +194,7 @@ export function getDigitalReceiptUrl(receiptId: string): string {
 export type PrintMode = 'printer' | 'pdf' | 'none';
 
 export function getPrintMode(): PrintMode {
-  return (localStorage.getItem('kassomat_print_mode') as PrintMode | null) ?? 'none';
+  return (localStorage.getItem('kassomat_print_mode') as PrintMode | null) ?? 'pdf';
 }
 
 export function setPrintMode(mode: PrintMode): void {
