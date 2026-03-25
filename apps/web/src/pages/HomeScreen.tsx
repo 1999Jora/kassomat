@@ -55,8 +55,10 @@ export default function HomeScreen() {
         animate={{ opacity: 1, y: 0 }}
         className="mb-10 text-center"
       >
-        <img src="/logo.png" alt="Spätii" className="w-16 h-16 mx-auto mb-3 opacity-90" />
-        <h1 className="text-2xl font-bold text-white tracking-wide">Kassomat</h1>
+        <div className="w-14 h-14 rounded-2xl bg-[#00e87a] flex items-center justify-center shadow-lg shadow-[#00e87a]/20 mx-auto mb-3">
+          <span className="text-black font-bold text-2xl leading-none">K</span>
+        </div>
+        <h1 className="text-xl font-bold text-white tracking-tight">Kassomat</h1>
       </motion.div>
 
       <div className="grid grid-cols-2 gap-4 w-full max-w-sm">

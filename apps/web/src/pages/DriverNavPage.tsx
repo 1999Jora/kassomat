@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useDeliveryStore } from '../store/useDeliveryStore';
@@ -61,6 +62,7 @@ export default function DriverNavPage() {
   const [is3D, setIs3D] = useState(true);
   const [pickedUp, setPickedUp] = useState(false);
   const [position, setPosition] = useState<GeolocationPosition | null>(null);
+  const navigate = useNavigate();
 
   const mapRef = useRef<maplibregl.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -378,7 +380,7 @@ export default function DriverNavPage() {
         <div className="flex justify-between items-center px-1">
           <span className="text-white/30 text-xs">{Math.round(currentSpeed)} km/h</span>
           <button
-            onClick={() => { setActiveDriver(null); setActiveDriverId(null); setPickedUp(false); setMyDeliveries([]); }}
+            onClick={() => { setActiveDriver(null); setActiveDriverId(null); setPickedUp(false); setMyDeliveries([]); navigate('/'); }}
             className="text-white/30 text-xs"
           >
             Abmelden

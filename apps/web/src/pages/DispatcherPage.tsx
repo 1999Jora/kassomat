@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useDeliveryStore } from '../store/useDeliveryStore';
@@ -28,6 +29,7 @@ const STATUS_COLOR: Record<string, string> = {
 export default function DispatcherPage() {
   const { deliveries, drivers, driverLocations, setDeliveries, setDrivers, upsertDelivery, updateDriverLocation } = useDeliveryStore();
   const { token } = useAuthStore();
+  const navigate = useNavigate();
   const [activeDriverTab, setActiveDriverTab] = useState<string>('all');
   const mapRef = useRef<maplibregl.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -121,9 +123,19 @@ export default function DispatcherPage() {
       {/* Left panel */}
       <div className="w-full max-w-md flex flex-col border-r border-white/8 overflow-hidden">
         {/* Header */}
-        <div className="p-4 border-b border-white/8">
-          <h1 className="text-white font-bold text-lg">Dispatcher</h1>
-          <p className="text-white/40 text-sm">{activeDeliveries.length} aktive Aufträge</p>
+        <div className="p-4 border-b border-white/8 flex items-center gap-3">
+          <button
+            onClick={() => navigate('/')}
+            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/8 shrink-0"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/>
+            </svg>
+          </button>
+          <div>
+            <h1 className="text-white font-bold text-lg leading-tight">Dispatcher</h1>
+            <p className="text-white/40 text-xs">{activeDeliveries.length} aktive Aufträge</p>
+          </div>
         </div>
 
         {/* Driver tabs */}

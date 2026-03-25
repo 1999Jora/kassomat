@@ -6,8 +6,19 @@ import useAuthStore from '../store/useAuthStore';
 const NAV = [
   {
     to: '/',
-    label: 'POS',
+    label: 'Home',
     exact: true,
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 12L12 3l9 9" />
+        <path d="M9 21V12h6v9" />
+        <path d="M3 12v9h18V12" />
+      </svg>
+    ),
+  },
+  {
+    to: '/pos',
+    label: 'POS',
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <rect x="2" y="3" width="20" height="14" rx="2" />
