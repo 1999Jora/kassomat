@@ -2,7 +2,7 @@ import { prisma } from '../../lib/prisma';
 import { rksvQueue } from '../../lib/queue';
 import { NotFoundError, ValidationError } from '../../lib/errors';
 import type { SalesChannel, PaymentMethod, VatRate } from '@kassomat/types';
-import type { Receipt as PrismaReceipt, ReceiptItem as PrismaReceiptItem } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 
 const VAT_NUM: Record<string, 0 | 10 | 13 | 20> = {
   VAT_0: 0,
@@ -11,8 +11,10 @@ const VAT_NUM: Record<string, 0 | 10 | 13 | 20> = {
   VAT_20: 20,
 };
 
+type ReceiptWithItems = Prisma.ReceiptGetPayload<{ include: { items: true } }>;
+
 /** Map a flat Prisma receipt + items to the nested Receipt API shape */
-function toReceiptResponse(receipt: PrismaReceipt & { items: PrismaReceiptItem[] }) {
+function toReceiptResponse(receipt: ReceiptWithItems) {
   return {
     id: receipt.id,
     tenantId: receipt.tenantId,

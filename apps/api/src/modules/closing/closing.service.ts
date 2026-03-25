@@ -97,7 +97,7 @@ export class ClosingService {
     const revenueByChannel = { direct: 0, lieferando: 0, wix: 0 };
     const revenueByPayment = { cash: 0, card: 0, online: 0 };
     const vatBreakdown = { vat0: 0, vat10: 0, vat13: 0, vat20: 0 };
-    const productTotals = new Map<string, { name: string; quantity: number; revenue: number }>();
+    const productTotals = new Map<string, { productName: string; quantity: number; revenue: number }>();
     const hourlyRevenue = Array.from({ length: 24 }, (_, h) => ({ hour: h, revenue: 0 }));
 
     for (const r of receipts) {
