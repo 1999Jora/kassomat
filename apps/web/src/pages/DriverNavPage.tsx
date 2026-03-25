@@ -71,9 +71,21 @@ export default function DriverNavPage() {
   const watchIdRef = useRef<number | null>(null);
   const lastGeocode = useRef<number>(0);
 
-  // Load drivers on mount
+  // Load drivers on mount — token optional, tenantId aus localStorage für öffentlichen Zugriff
   useEffect(() => {
-    fetch(`${API}/drivers`)
+    const token = localStorage.getItem('kassomat_access_token');
+    const userRaw = localStorage.getItem('kassomat_user');
+    const tenantId = userRaw ? (JSON.parse(userRaw) as { tenantId: string }).tenantId : null;
+
+    const url = token
+      ? `${API}/drivers`
+      : tenantId
+        ? `${API}/drivers?tenantId=${tenantId}`
+        : null;
+
+    if (!url) { setLoadingDrivers(false); return; }
+
+    fetch(url, token ? { headers: { Authorization: `Bearer ${token}` } } : {})
       .then(r => r.json())
       .then(data => { useDeliveryStore.getState().setDrivers(Array.isArray(data) ? data : []); })
       .catch(() => {})

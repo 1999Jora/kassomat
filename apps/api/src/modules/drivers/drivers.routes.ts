@@ -5,8 +5,23 @@ import { prisma } from '../../lib/prisma.js';
 const db = prisma as any;
 
 export async function driversRoutes(app: FastifyInstance) {
-  // GET /drivers — list all drivers for tenant
-  app.get('/drivers', { onRequest: [app.authenticate] }, async (req) => {
+  // GET /drivers — list all drivers (auth = full data, no auth = public list ohne PIN)
+  app.get('/drivers', async (req, reply) => {
+    try {
+      await (app.authenticate as any)(req, reply);
+    } catch {
+      // Nicht eingeloggt → öffentliche Liste ohne PIN (für Fahrer-Login Ansicht)
+      // tenantId kommt aus Query-Parameter
+      const tenantId = (req.query as any).tenantId as string | undefined;
+      if (!tenantId) return reply.status(400).send({ error: 'tenantId required' });
+      const drivers = await db.driver.findMany({
+        where: { tenantId, isActive: true },
+        orderBy: { sortOrder: 'asc' },
+        select: { id: true, name: true, color: true, isActive: true, sortOrder: true },
+      });
+      return drivers;
+    }
+    // Eingeloggt → volle Daten inkl. PIN
     const tenantId = (req.user as any).tenantId;
     return db.driver.findMany({
       where: { tenantId },
