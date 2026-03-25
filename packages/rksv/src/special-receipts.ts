@@ -1,6 +1,6 @@
 /**
  * Spezielle RKSV-Belege
- * Startbeleg, Nullbeleg, Monatsbeleg, Jahresbeleg
+ * Startbeleg, Nullbeleg, Monatsbeleg, Jahresbeleg, Trainingsbeleg, Schlussbeleg
  * Alle mit €0 Beträgen — dienen zur RKSV-Compliance
  */
 
@@ -38,6 +38,7 @@ function baseSpecialReceipt(
       subtotalNet: 0,
       vat0: 0,
       vat10: 0,
+      vat13: 0,
       vat20: 0,
       totalVat: 0,
       totalGross: 0,
@@ -64,11 +65,38 @@ export function createStartReceipt(
 /**
  * Nullbeleg — Testbon mit €0, jederzeit möglich.
  * Dient zur Überprüfung der Signaturkette ohne echten Umsatz.
- * Standard Kassen-ID: KASSE-01
  */
 export function createNullReceipt(tenant: Tenant): Partial<Receipt> {
   return {
     ...baseSpecialReceipt(tenant, 'null_receipt', 'KASSE-01'),
+  };
+}
+
+/**
+ * Trainingsbeleg — Bon für Schulungszwecke.
+ * Umsatzzähler-Feld enthält verschlüsseltes "TRA" — kein Effekt auf den echten Umsatzzähler.
+ * Alle Beträge: €0
+ */
+export function createTrainingReceipt(tenant: Tenant): Partial<Receipt> {
+  return {
+    ...baseSpecialReceipt(tenant, 'training', 'KASSE-01'),
+  };
+}
+
+/**
+ * Schlussbeleg (closing_receipt) — letzter Bon bei Außerbetriebnahme der Kasse.
+ * Muss bei FinanzOnline eingereicht werden.
+ * Alle Beträge: €0
+ *
+ * @param tenant - Tenant-Objekt
+ * @param cashRegisterId - Kassen-ID die außer Betrieb genommen wird
+ */
+export function createClosingReceipt(
+  tenant: Tenant,
+  cashRegisterId: string,
+): Partial<Receipt> {
+  return {
+    ...baseSpecialReceipt(tenant, 'closing_receipt', cashRegisterId),
   };
 }
 
@@ -84,7 +112,6 @@ export function createMonthReceipt(
   tenant: Tenant,
   month: Date,
 ): Partial<Receipt> {
-  // Monatsbeleg-Timestamp: 1. des Monats um 00:01 Uhr (Wiener Zeit)
   const timestamp = new Date(month);
   timestamp.setDate(1);
   timestamp.setHours(0, 1, 0, 0);
@@ -111,7 +138,6 @@ export function createYearReceipt(
   tenant: Tenant,
   year: number,
 ): Partial<Receipt> {
-  // Jahresbeleg-Timestamp: 01. Januar um 00:01 Uhr
   const timestamp = new Date(year, 0, 1, 0, 1, 0, 0);
 
   const base = baseSpecialReceipt(tenant, 'year_receipt', 'KASSE-01');

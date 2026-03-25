@@ -89,7 +89,7 @@ export type PublicUser = Omit<User, 'passwordHash' | 'pin'>;
 // ============================================================
 
 /** Österreichische MwSt-Sätze */
-export type VatRate = 0 | 10 | 20;
+export type VatRate = 0 | 10 | 13 | 20;
 
 /** Ein Verkaufsartikel */
 export interface Product {
@@ -141,7 +141,8 @@ export type ReceiptType =
   | 'null_receipt'
   | 'start_receipt'
   | 'month_receipt'
-  | 'year_receipt';
+  | 'year_receipt'
+  | 'closing_receipt';
 
 /** Status des Belegs im Signatur-Workflow */
 export type ReceiptStatus = 'pending' | 'signed' | 'printed' | 'cancelled' | 'offline_pending';
@@ -216,6 +217,8 @@ export interface ReceiptTotals {
   vat0: number;
   /** MwSt-Betrag 10% in Cent */
   vat10: number;
+  /** MwSt-Betrag 13% in Cent (Gastronomie-Sondersatz) */
+  vat13: number;
   /** MwSt-Betrag 20% in Cent */
   vat20: number;
   /** Gesamter MwSt-Betrag in Cent */
@@ -238,10 +241,14 @@ export interface RKSVData {
   /** Fortlaufende Belegnummer (tenant-spezifisch, beginnt bei 1) */
   belegnummer: string;
   /**
-   * Kumulierte verschlüsselte Barumsatzsumme in Cent
-   * Nach RKSV Spec: AES-256-ICM verschlüsselt
+   * Kumulierte Barumsatzsumme in Cent (nicht verschlüsselt, intern)
    */
   barumsatzSumme: number;
+  /**
+   * AES-256-ICM verschlüsselter Umsatzzähler (Base64)
+   * Pflichtfeld im QR-Code und DEP nach RKSV Spec
+   */
+  umsatzzaehlerEncrypted?: string;
   /** SHA-256 Hash des vorherigen Bons (Hash-Chaining) */
   previousReceiptHash: string;
   /** SHA-256 Hash dieses Bons */
@@ -516,6 +523,7 @@ export interface AnalyticsData {
   vatBreakdown: {
     vat0: number;
     vat10: number;
+    vat13: number;
     vat20: number;
   };
   topProducts: Array<{

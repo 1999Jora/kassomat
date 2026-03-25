@@ -34,10 +34,11 @@ const listQuerySchema = z.object({
 // Helper: map Prisma VatRate enum string to numeric VAT rate
 // ============================================================
 
-function toNumericVatRate(vatRate: string): 0 | 10 | 20 {
+function toNumericVatRate(vatRate: string): 0 | 10 | 13 | 20 {
   switch (vatRate) {
     case 'VAT_0':  return 0;
     case 'VAT_10': return 10;
+    case 'VAT_13': return 13;
     case 'VAT_20': return 20;
     default:       return 20;
   }
@@ -155,6 +156,7 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
         subtotalNet: receipt.subtotalNet,
         vat0: receipt.vat0,
         vat10: receipt.vat10,
+        vat13: receipt.vat13,
         vat20: receipt.vat20,
         totalVat: receipt.totalVat,
         totalGross: receipt.totalGross,
@@ -257,6 +259,7 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
         subtotalNet: receipt.subtotalNet,
         vat0: receipt.vat0,
         vat10: receipt.vat10,
+        vat13: receipt.vat13,
         vat20: receipt.vat20,
         totalVat: receipt.totalVat,
         totalGross: receipt.totalGross,
@@ -284,6 +287,21 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
   /** POST /receipts/null — Nullbeleg */
   fastify.post('/receipts/null', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const receipt = await service.createNullReceipt(request.tenantId, request.jwtPayload.sub);
+    return reply.code(201).send({ success: true, data: receipt });
+  });
+
+  /** POST /receipts/training — Trainingsbeleg */
+  fastify.post('/receipts/training', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const receipt = await service.createTrainingReceipt(request.tenantId, request.jwtPayload.sub);
+    return reply.code(201).send({ success: true, data: receipt });
+  });
+
+  /** POST /receipts/closing — Schlussbeleg (Kasse außer Betrieb) */
+  fastify.post('/receipts/closing', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const body = z.object({
+      cashRegisterId: z.string().default('KASSE-01'),
+    }).parse(request.body ?? {});
+    const receipt = await service.createClosingReceipt(request.tenantId, request.jwtPayload.sub, body.cashRegisterId);
     return reply.code(201).send({ success: true, data: receipt });
   });
 }

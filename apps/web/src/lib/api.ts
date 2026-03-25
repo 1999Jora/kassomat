@@ -108,7 +108,7 @@ export interface CreateReceiptPayload {
     productId: string;
     quantity: number;
     unitPrice: number;
-    vatRate: 0 | 10 | 20;
+    vatRate: 0 | 10 | 13 | 20;
     discount: number;
   }>;
   payment: {

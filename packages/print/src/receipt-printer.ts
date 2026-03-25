@@ -125,6 +125,9 @@ export function buildReceiptBuffer(receipt: ReceiptData, tenant: TenantInfo): Bu
   if (receipt.totals.vat10 > 0) {
     b.printLine('MwSt 10%:', formatEuro(receipt.totals.vat10), WIDTH);
   }
+  if (receipt.totals.vat13 > 0) {
+    b.printLine('MwSt 13%:', formatEuro(receipt.totals.vat13), WIDTH);
+  }
   if (receipt.totals.vat20 > 0) {
     b.printLine('MwSt 20%:', formatEuro(receipt.totals.vat20), WIDTH);
   }

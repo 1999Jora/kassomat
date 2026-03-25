@@ -3,7 +3,12 @@ import { rksvQueue } from '../../lib/queue';
 import { NotFoundError, ValidationError } from '../../lib/errors';
 import type { SalesChannel, PaymentMethod } from '@kassomat/types';
 
-const VAT_NUM: Record<string, 0 | 10 | 20> = { VAT_0: 0, VAT_10: 10, VAT_20: 20 };
+const VAT_NUM: Record<string, 0 | 10 | 13 | 20> = {
+  VAT_0: 0,
+  VAT_10: 10,
+  VAT_13: 13,
+  VAT_20: 20,
+};
 
 export interface CreateReceiptItemInput {
   productId: string;
@@ -27,7 +32,6 @@ export interface CreateReceiptInput {
 export class ReceiptsService {
   /** Neuen Bon erstellen, RKSV-Signatur asynchron via Queue */
   async create(tenantId: string, cashierId: string, input: CreateReceiptInput) {
-    // Alle Produkte für diesen Tenant laden
     const productIds = input.items.map(i => i.productId);
     const products = await prisma.product.findMany({
       where: { id: { in: productIds }, tenantId, deletedAt: null },
@@ -41,7 +45,6 @@ export class ReceiptsService {
 
     const productMap = new Map(products.map(p => [p.id, p]));
 
-    // Berechnung der Positionen
     const computedItems = input.items.map(item => {
       const product = productMap.get(item.productId)!;
       const discount = item.discount ?? 0;
@@ -64,7 +67,6 @@ export class ReceiptsService {
       };
     });
 
-    // Totals
     const totals = computedItems.reduce(
       (acc, item) => {
         acc.subtotalNet += item.totalNet;
@@ -72,19 +74,18 @@ export class ReceiptsService {
         acc.totalGross += item.totalGross;
         if (item.vatRate === 'VAT_0') acc.vat0 += item.totalVat;
         else if (item.vatRate === 'VAT_10') acc.vat10 += item.totalVat;
+        else if (item.vatRate === 'VAT_13') acc.vat13 += item.totalVat;
         else acc.vat20 += item.totalVat;
         return acc;
       },
-      { subtotalNet: 0, vat0: 0, vat10: 0, vat20: 0, totalVat: 0, totalGross: 0 },
+      { subtotalNet: 0, vat0: 0, vat10: 0, vat13: 0, vat20: 0, totalVat: 0, totalGross: 0 },
     );
 
     const tip = input.payment.tip ?? 0;
     const amountPaid = input.payment.amountPaid;
     const change = input.payment.method === 'cash' ? Math.max(0, amountPaid - totals.totalGross - tip) : 0;
 
-    // Fortlaufende Belegnummer — atomar via Transaktion
     const receipt = await prisma.$transaction(async (tx) => {
-      // Letzte Nummer für diesen Tenant ermitteln
       const last = await tx.receipt.findFirst({
         where: { tenantId },
         orderBy: { createdAt: 'desc' },
@@ -126,7 +127,6 @@ export class ReceiptsService {
       });
     });
 
-    // RKSV-Signatur asynchron via BullMQ
     await rksvQueue.add('sign_receipt', {
       receiptId: receipt.id,
       tenantId,
@@ -192,7 +192,6 @@ export class ReceiptsService {
     }
 
     const cancelReceipt = await prisma.$transaction(async (tx) => {
-      // Original als cancelled markieren
       await tx.receipt.update({ where: { id: receiptId }, data: { status: 'cancelled' } });
 
       const last = await tx.receipt.findFirst({
@@ -227,6 +226,7 @@ export class ReceiptsService {
           subtotalNet: -original.subtotalNet,
           vat0: -original.vat0,
           vat10: -original.vat10,
+          vat13: -original.vat13,
           vat20: -original.vat20,
           totalVat: -original.totalVat,
           totalGross: -original.totalGross,
@@ -255,6 +255,26 @@ export class ReceiptsService {
 
   /** Nullbeleg erstellen (RKSV-Test) */
   async createNullReceipt(tenantId: string, cashierId: string) {
+    return this._createZeroReceipt(tenantId, cashierId, 'null_receipt');
+  }
+
+  /** Trainingsbeleg erstellen (Schulungsmodus) */
+  async createTrainingReceipt(tenantId: string, cashierId: string) {
+    return this._createZeroReceipt(tenantId, cashierId, 'training');
+  }
+
+  /** Schlussbeleg erstellen (Kasse außer Betrieb) */
+  async createClosingReceipt(tenantId: string, cashierId: string, cashRegisterId?: string) {
+    return this._createZeroReceipt(tenantId, cashierId, 'closing_receipt', cashRegisterId ?? 'KASSE-01');
+  }
+
+  /** Erstellt einen Null-Beleg (0 EUR) für verschiedene Sonder-Typen */
+  private async _createZeroReceipt(
+    tenantId: string,
+    cashierId: string,
+    type: 'null_receipt' | 'training' | 'closing_receipt',
+    cashRegisterId = 'KASSE-01',
+  ) {
     const year = new Date().getFullYear();
     const last = await prisma.receipt.findFirst({
       where: { tenantId },
@@ -271,14 +291,14 @@ export class ReceiptsService {
       data: {
         tenantId,
         receiptNumber: `${year}-${String(nextNum).padStart(6, '0')}`,
-        cashRegisterId: 'KASSE-01',
-        type: 'null_receipt',
+        cashRegisterId,
+        type,
         status: 'pending',
         cashierId,
         channel: 'direct',
         paymentMethod: 'cash',
         amountPaid: 0, change: 0, tip: 0,
-        subtotalNet: 0, vat0: 0, vat10: 0, vat20: 0, totalVat: 0, totalGross: 0,
+        subtotalNet: 0, vat0: 0, vat10: 0, vat13: 0, vat20: 0, totalVat: 0, totalGross: 0,
       },
       include: { items: true },
     });

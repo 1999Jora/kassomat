@@ -21,10 +21,11 @@ export default function Cart() {
       acc.net += net;
       if (item.vatRate === 0) acc.vat0 += vat;
       else if (item.vatRate === 10) acc.vat10 += vat;
+      else if (item.vatRate === 13) acc.vat13 += vat;
       else acc.vat20 += vat;
       return acc;
     },
-    { gross: 0, vat: 0, net: 0, vat0: 0, vat10: 0, vat20: 0 },
+    { gross: 0, vat: 0, net: 0, vat0: 0, vat10: 0, vat13: 0, vat20: 0 },
   );
 
   const channel = CHANNEL_CONFIG[cartChannel] ?? CHANNEL_CONFIG.direct;
@@ -173,6 +174,12 @@ export default function Cart() {
               <div className="flex justify-between text-[10px] text-[#6b7280]">
                 <span>MwSt 10%</span>
                 <span className="font-mono">{formatCents(totals.vat10)}</span>
+              </div>
+            )}
+            {totals.vat13 > 0 && (
+              <div className="flex justify-between text-[10px] text-[#6b7280]">
+                <span>MwSt 13%</span>
+                <span className="font-mono">{formatCents(totals.vat13)}</span>
               </div>
             )}
             {totals.vat20 > 0 && (

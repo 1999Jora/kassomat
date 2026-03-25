@@ -40,6 +40,7 @@ enum UserRole {
 enum VatRate {
   VAT_0  @map("0")
   VAT_10 @map("10")
+  VAT_13 @map("13")
   VAT_20 @map("20")
 }
 
@@ -51,6 +52,7 @@ enum ReceiptType {
   start_receipt
   month_receipt
   year_receipt
+  closing_receipt
 }
 
 enum ReceiptStatus {
@@ -144,6 +146,10 @@ model Tenant {
   atrustApiKey_encrypted  String?
   atrustApiKeyHint        String?
   atrustEnvironment       ATrustEnvironment @default(test)
+
+  // RKSV AES-256 Key für Umsatzzähler-Verschlüsselung
+  rksvAesKey_encrypted    String?
+  rksvAesKeyHint          String?
 
   // Lieferando Config
   lieferandoRestaurantId   String?
@@ -308,6 +314,7 @@ model Receipt {
   subtotalNet      Int           // in Cent
   vat0             Int           @default(0)
   vat10            Int           @default(0)
+  vat13            Int           @default(0)
   vat20            Int           @default(0)
   totalVat         Int           // in Cent
   totalGross       Int           // in Cent
@@ -316,6 +323,7 @@ model Receipt {
   rksv_registrierkasseId      String?
   rksv_belegnummer            String?
   rksv_barumsatzSumme         Int      @default(0)
+  rksv_umsatzzaehlerEncrypted String?  // AES-256-ICM verschlüsselter Umsatzzähler (Base64)
   rksv_previousReceiptHash    String?
   rksv_receiptHash            String?
   rksv_signature              String?  // Base64

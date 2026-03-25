@@ -107,6 +107,13 @@ export function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: TenantI
         <td style="padding:3px 0;text-align:right;color:#555;">${esc(formatEuro(receipt.totals.vat10))}</td>
       </tr>`);
   }
+  if (receipt.totals.vat13 > 0) {
+    vatRows.push(`
+      <tr>
+        <td style="padding:3px 0;color:#555;">MwSt 13%</td>
+        <td style="padding:3px 0;text-align:right;color:#555;">${esc(formatEuro(receipt.totals.vat13))}</td>
+      </tr>`);
+  }
   if (receipt.totals.vat20 > 0) {
     vatRows.push(`
       <tr>

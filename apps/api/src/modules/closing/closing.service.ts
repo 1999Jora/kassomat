@@ -96,7 +96,7 @@ export class ClosingService {
 
     const revenueByChannel = { direct: 0, lieferando: 0, wix: 0 };
     const revenueByPayment = { cash: 0, card: 0, online: 0 };
-    const vatBreakdown = { vat0: 0, vat10: 0, vat20: 0 };
+    const vatBreakdown = { vat0: 0, vat10: 0, vat13: 0, vat20: 0 };
     const productTotals = new Map<string, { name: string; quantity: number; revenue: number }>();
     const hourlyRevenue = Array.from({ length: 24 }, (_, h) => ({ hour: h, revenue: 0 }));
 
@@ -105,6 +105,7 @@ export class ClosingService {
       revenueByPayment[r.paymentMethod] += r.totalGross;
       vatBreakdown.vat0 += r.vat0;
       vatBreakdown.vat10 += r.vat10;
+      vatBreakdown.vat13 += r.vat13;
       vatBreakdown.vat20 += r.vat20;
 
       const hour = r.createdAt.getHours();

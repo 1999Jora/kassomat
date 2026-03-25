@@ -14,13 +14,17 @@
 import { Worker, type Job } from 'bullmq';
 import { join } from 'path';
 import { mkdir } from 'fs/promises';
+import { randomBytes, createHash } from 'crypto';
 import {
   ATrustClient,
   ATrustError,
   calculateReceiptHash,
   calculateInitialHash,
   buildQRCodeData,
+  buildSigVorigerBeleg,
   DEPBuilder,
+  encryptUmsatzzaehler,
+  encryptSpecialMarker,
 } from '@kassomat/rksv';
 import type {
   ReceiptType,
@@ -32,7 +36,7 @@ import type {
   RKSVData,
 } from '@kassomat/types';
 import { prisma } from '../lib/prisma';
-import { decrypt } from '../lib/crypto';
+import { decrypt, encrypt } from '../lib/crypto';
 import {
   RKSV_QUEUE_NAME,
   rksvQueue,
@@ -90,6 +94,76 @@ async function getPreviousReceiptHash(
   return previous?.rksv_receiptHash ?? calculateInitialHash();
 }
 
+/** Holt die Signatur des letzten signierten Bons (für Sig-Voriger-Beleg) */
+async function getPreviousSignature(
+  tenantId: string,
+  currentReceiptId: string,
+): Promise<string | null> {
+  const previous = await prisma.receipt.findFirst({
+    where: {
+      tenantId,
+      id: { not: currentReceiptId },
+      rksv_signature: { not: null },
+      status: { in: ['signed', 'printed'] },
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { rksv_signature: true },
+  });
+
+  return previous?.rksv_signature ?? null;
+}
+
+/** Kumulierten Barumsatz für den Tenant berechnen (alle signierten Sale-Bons) */
+async function getCumulativeUmsatz(
+  tenantId: string,
+  currentReceiptId: string,
+): Promise<number> {
+  const result = await prisma.receipt.aggregate({
+    where: {
+      tenantId,
+      id: { not: currentReceiptId },
+      type: { in: ['sale', 'cancellation'] },
+      status: { in: ['signed', 'printed'] },
+    },
+    _sum: { totalGross: true },
+  });
+
+  return result._sum.totalGross ?? 0;
+}
+
+// ============================================================
+// AES Key Management
+// ============================================================
+
+/** Holt oder erstellt den AES-256 Key für den Umsatzzähler */
+async function getOrCreateAesKey(tenantId: string): Promise<Buffer> {
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { rksvAesKey_encrypted: true },
+  });
+
+  if (tenant?.rksvAesKey_encrypted) {
+    const keyHex = decrypt(tenant.rksvAesKey_encrypted);
+    return Buffer.from(keyHex, 'hex');
+  }
+
+  // Neuen 256-bit AES Key generieren
+  const newKey = randomBytes(32);
+  const keyHex = newKey.toString('hex');
+  const encrypted = encrypt(keyHex);
+  const hint = keyHex.substring(0, 4) + '...';
+
+  await prisma.tenant.update({
+    where: { id: tenantId },
+    data: {
+      rksvAesKey_encrypted: encrypted,
+      rksvAesKeyHint: hint,
+    },
+  });
+
+  return newKey;
+}
+
 // ============================================================
 // Job: sign_receipt
 // ============================================================
@@ -140,10 +214,14 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
     environment: tenant.atrustEnvironment === 'production' ? 'production' : 'test',
   });
 
-  // 3. Vorherigen Hash ermitteln
+  // 3. Vorherigen Hash und Signatur ermitteln
   const previousHash = await getPreviousReceiptHash(tenantId, receiptId);
+  const previousSignature = await getPreviousSignature(tenantId, receiptId);
 
-  // 4. Daten-String zum Signieren aufbauen
+  // 4. Sig-Voriger-Beleg = BASE64(SHA256(prevSignature)[0:8])
+  const sigVorigerBeleg = buildSigVorigerBeleg(previousSignature);
+
+  // 5. Daten-String zum Signieren aufbauen
   const signData = [
     receipt.receiptNumber,
     receipt.createdAt.toISOString(),
@@ -151,7 +229,7 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
     previousHash,
   ].join('|');
 
-  // 5. A-Trust Signatur holen (mit Retry-Logik in ATrustClient)
+  // 6. A-Trust Signatur holen (mit Retry-Logik in ATrustClient)
   let signature: string;
   try {
     signature = await atrustClient.signReceipt(signData);
@@ -161,7 +239,6 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
     } else {
       console.error(`[RKSV Worker] Unbekannter Fehler bei Signatur für ${receiptId}:`, err);
     }
-    // offline_pending setzen, BullMQ plant Retry
     await prisma.receipt.update({
       where: { id: receiptId },
       data: { status: 'offline_pending' },
@@ -169,7 +246,7 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
     throw err;
   }
 
-  // 6. Receipt-Hash berechnen (Hash-Kette)
+  // 7. Receipt-Hash berechnen (Hash-Kette)
   const receiptHash = calculateReceiptHash(
     receipt.receiptNumber,
     receipt.createdAt,
@@ -178,11 +255,46 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
     signature,
   );
 
-  // 7. RKSV-Daten und QR-Code aufbauen
+  // 8. Umsatzzähler verschlüsseln
+  const isStorno = receipt.type === 'cancellation';
+  const isTraining = receipt.type === 'training';
+  const isSpecialZero = ['null_receipt', 'start_receipt', 'month_receipt', 'year_receipt', 'closing_receipt']
+    .includes(receipt.type);
+
+  let umsatzzaehlerEncrypted: string;
+  let cumulativeSum = 0;
+
+  if (isStorno) {
+    // Stornobeleg: verschlüsseltes "STO"
+    const aesKey = await getOrCreateAesKey(tenantId);
+    umsatzzaehlerEncrypted = encryptSpecialMarker('STO', receipt.cashRegisterId, receipt.receiptNumber, aesKey);
+  } else if (isTraining) {
+    // Trainingsbeleg: verschlüsseltes "TRA"
+    const aesKey = await getOrCreateAesKey(tenantId);
+    umsatzzaehlerEncrypted = encryptSpecialMarker('TRA', receipt.cashRegisterId, receipt.receiptNumber, aesKey);
+  } else if (isSpecialZero) {
+    // Sonderbelege: verschlüsselte 0
+    const aesKey = await getOrCreateAesKey(tenantId);
+    umsatzzaehlerEncrypted = encryptUmsatzzaehler(0, receipt.cashRegisterId, receipt.receiptNumber, aesKey);
+  } else {
+    // Normaler Bon: kumulierten Umsatz berechnen und verschlüsseln
+    const prevSum = await getCumulativeUmsatz(tenantId, receiptId);
+    cumulativeSum = prevSum + receipt.totalGross;
+    const aesKey = await getOrCreateAesKey(tenantId);
+    umsatzzaehlerEncrypted = encryptUmsatzzaehler(
+      cumulativeSum,
+      receipt.cashRegisterId,
+      receipt.receiptNumber,
+      aesKey,
+    );
+  }
+
+  // 9. RKSV-Daten und QR-Code aufbauen
   const rksv: RKSVData = {
     registrierkasseId: receipt.cashRegisterId,
     belegnummer: receipt.receiptNumber,
-    barumsatzSumme: receipt.totalGross,
+    barumsatzSumme: cumulativeSum,
+    umsatzzaehlerEncrypted,
     previousReceiptHash: previousHash,
     receiptHash,
     signature,
@@ -214,23 +326,25 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
       subtotalNet: receipt.subtotalNet,
       vat0: receipt.vat0,
       vat10: receipt.vat10,
+      vat13: receipt.vat13,
       vat20: receipt.vat20,
       totalVat: receipt.totalVat,
       totalGross: receipt.totalGross,
     },
   };
 
-  const qrCodeData = buildQRCodeData(fullReceipt, rksv);
+  const qrCodeData = buildQRCodeData(fullReceipt, rksv, umsatzzaehlerEncrypted, sigVorigerBeleg);
   rksv.qrCodeData = qrCodeData;
 
-  // 8. DB aktualisieren: RKSV-Felder setzen, status = 'signed'
+  // 10. DB aktualisieren: RKSV-Felder setzen, status = 'signed'
   await prisma.receipt.update({
     where: { id: receiptId },
     data: {
       status: 'signed',
       rksv_registrierkasseId: receipt.cashRegisterId,
       rksv_belegnummer: receipt.receiptNumber,
-      rksv_barumsatzSumme: receipt.totalGross,
+      rksv_barumsatzSumme: cumulativeSum,
+      rksv_umsatzzaehlerEncrypted: umsatzzaehlerEncrypted,
       rksv_previousReceiptHash: previousHash,
       rksv_receiptHash: receiptHash,
       rksv_signature: signature,
@@ -240,7 +354,7 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
     },
   });
 
-  // 9. DEP-Eintrag erstellen
+  // 11. DEP-Eintrag erstellen
   await prisma.dEPEntry.upsert({
     where: { receiptId },
     create: {
@@ -256,10 +370,16 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
         Belegnummer: receipt.receiptNumber,
         Belegdatum: receipt.createdAt.toISOString(),
         Betrag: receipt.totalGross / 100,
-        Signaturwert: signature,
-        Sig_Voriger_Beleg: previousHash,
-        QR_Code: qrCodeData,
+        Umsatz_Normal: receipt.vat20 / 100,
+        Umsatz_Ermaessigt_1: receipt.vat10 / 100,
+        Umsatz_Ermaessigt_2: receipt.vat13 / 100,
+        Umsatz_Besonders: 0,
+        Umsatz_Null: receipt.vat0 / 100,
+        Verschluesselter_Umsatzzaehler: umsatzzaehlerEncrypted,
         Zertifikatsseriennummer: tenant.atrustCertificateSerial,
+        Sig_Voriger_Beleg: sigVorigerBeleg,
+        Signaturwert: signature,
+        QR_Code: qrCodeData,
       },
     },
     update: {
@@ -270,15 +390,21 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
         Belegnummer: receipt.receiptNumber,
         Belegdatum: receipt.createdAt.toISOString(),
         Betrag: receipt.totalGross / 100,
-        Signaturwert: signature,
-        Sig_Voriger_Beleg: previousHash,
-        QR_Code: qrCodeData,
+        Umsatz_Normal: receipt.vat20 / 100,
+        Umsatz_Ermaessigt_1: receipt.vat10 / 100,
+        Umsatz_Ermaessigt_2: receipt.vat13 / 100,
+        Umsatz_Besonders: 0,
+        Umsatz_Null: receipt.vat0 / 100,
+        Verschluesselter_Umsatzzaehler: umsatzzaehlerEncrypted,
         Zertifikatsseriennummer: tenant.atrustCertificateSerial,
+        Sig_Voriger_Beleg: sigVorigerBeleg,
+        Signaturwert: signature,
+        QR_Code: qrCodeData,
       },
     },
   });
 
-  console.log(`[RKSV Worker] Bon ${receipt.receiptNumber} signiert`);
+  console.log(`[RKSV Worker] Bon ${receipt.receiptNumber} signiert (${receipt.type})`);
 }
 
 // ============================================================
@@ -288,7 +414,6 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
 async function handleDepBackup(job: Job<DepBackupJobData>): Promise<void> {
   const { tenantId, date } = job.data;
 
-  // Alle signierten Bons des Tenants für das Datum laden
   const startOfDay = new Date(`${date}T00:00:00.000Z`);
   const endOfDay = new Date(`${date}T23:59:59.999Z`);
 
@@ -323,6 +448,7 @@ async function handleDepBackup(job: Job<DepBackupJobData>): Promise<void> {
       registrierkasseId: receipt.rksv_registrierkasseId ?? receipt.cashRegisterId,
       belegnummer: receipt.rksv_belegnummer ?? receipt.receiptNumber,
       barumsatzSumme: receipt.rksv_barumsatzSumme,
+      umsatzzaehlerEncrypted: receipt.rksv_umsatzzaehlerEncrypted ?? undefined,
       previousReceiptHash: receipt.rksv_previousReceiptHash ?? '',
       receiptHash: receipt.rksv_receiptHash,
       signature: receipt.rksv_signature,
@@ -366,6 +492,7 @@ async function handleDepBackup(job: Job<DepBackupJobData>): Promise<void> {
         subtotalNet: receipt.subtotalNet,
         vat0: receipt.vat0,
         vat10: receipt.vat10,
+        vat13: receipt.vat13,
         vat20: receipt.vat20,
         totalVat: receipt.totalVat,
         totalGross: receipt.totalGross,
@@ -375,7 +502,6 @@ async function handleDepBackup(job: Job<DepBackupJobData>): Promise<void> {
     builder.addReceipt(receiptForDep, rksvData);
   }
 
-  // DEP-Export in Datei schreiben
   const depDir = process.env['DEP_EXPORT_DIR'] ?? '/tmp/dep-exports';
   await mkdir(depDir, { recursive: true });
 
@@ -383,7 +509,6 @@ async function handleDepBackup(job: Job<DepBackupJobData>): Promise<void> {
   const filepath = join(depDir, filename);
   await builder.exportToFile(filepath);
 
-  // DailyClosing mit DEP-Pfad aktualisieren (falls vorhanden)
   await prisma.dailyClosing.updateMany({
     where: { tenantId, date },
     data: { depExportPath: filepath },
@@ -438,7 +563,6 @@ async function handleCreateSpecialReceipt(
     return;
   }
 
-  // Fortlaufende Belegnummer ermitteln
   const now = new Date(month);
   const year = now.getFullYear();
 
@@ -458,7 +582,6 @@ async function handleCreateSpecialReceipt(
   const receiptNumber = `${year}-${String(nextNum).padStart(6, '0')}`;
   const type = isYearReceipt ? 'year_receipt' : 'month_receipt';
 
-  // Owner als Kassierer für automatische Bons
   const owner = await prisma.user.findFirst({
     where: { tenantId, role: 'owner' },
     select: { id: true },
@@ -484,6 +607,7 @@ async function handleCreateSpecialReceipt(
       subtotalNet: 0,
       vat0: 0,
       vat10: 0,
+      vat13: 0,
       vat20: 0,
       totalVat: 0,
       totalGross: 0,

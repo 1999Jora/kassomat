@@ -29,7 +29,7 @@ export interface PrinterConfig {
 // ============================================================
 
 /** Austrian VAT rates */
-export type PrintVatRate = 0 | 10 | 20;
+export type PrintVatRate = 0 | 10 | 13 | 20;
 
 /** A single line item on a receipt */
 export interface PrintReceiptItem {
@@ -70,6 +70,8 @@ export interface PrintTotals {
   vat0: number;
   /** VAT at 10% in cents */
   vat10: number;
+  /** VAT at 13% in cents (Gastronomie-Sondersatz) */
+  vat13: number;
   /** VAT at 20% in cents */
   vat20: number;
   /** Total VAT in cents */
@@ -87,7 +89,7 @@ export interface ReceiptData {
   /** Cash register identifier */
   cashRegisterId: string;
   /** Receipt type */
-  type: 'sale' | 'cancellation' | 'training' | 'null_receipt' | 'start_receipt' | 'month_receipt' | 'year_receipt';
+  type: 'sale' | 'cancellation' | 'training' | 'null_receipt' | 'start_receipt' | 'month_receipt' | 'year_receipt' | 'closing_receipt';
   /** UTC timestamp of receipt creation */
   createdAt: Date;
   /** Name of the cashier */

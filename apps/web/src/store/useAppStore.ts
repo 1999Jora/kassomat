@@ -5,7 +5,7 @@ export interface CartItem {
   productId: string;
   name: string;
   price: number; // cents
-  vatRate: 0 | 10 | 20;
+  vatRate: 0 | 10 | 13 | 20;
   quantity: number;
   discount: number; // cents
 }
