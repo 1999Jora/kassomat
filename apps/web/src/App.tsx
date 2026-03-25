@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import POSLayout from './components/POSLayout';
+import POSLayout from './pages/POSLayout';
 import PINLock from './components/PINLock';
 import AdminLayout from './components/AdminLayout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -10,6 +10,10 @@ import SignupPage from './pages/SignupPage';
 import DashboardPage from './pages/DashboardPage';
 import SettingsPage from './pages/SettingsPage';
 import DepExportPage from './pages/DepExportPage';
+import HomeScreen from './pages/HomeScreen';
+import DriverNavPage from './pages/DriverNavPage';
+import DispatcherPage from './pages/DispatcherPage';
+import DriversPage from './pages/DriversPage';
 import { useAppStore } from './store/useAppStore';
 import { useRealtimeOrders } from './hooks/useRealtimeOrders';
 import { ThemeProvider } from './context/ThemeContext';
@@ -48,13 +52,28 @@ function AnimatedRoutes() {
         <Routes location={location}>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
+
+          {/* Home screen — tile selection */}
           <Route path="/" element={
+            <ProtectedRoute><HomeScreen /></ProtectedRoute>
+          } />
+
+          {/* POS */}
+          <Route path="/pos" element={
             <ProtectedRoute>
-              <PINGate>
-                <POSLayout />
-              </PINGate>
+              <PINGate><POSLayout /></PINGate>
             </ProtectedRoute>
           } />
+
+          {/* Driver navigation — no auth needed, uses driver PIN */}
+          <Route path="/delivery/nav" element={<DriverNavPage />} />
+
+          {/* Dispatcher */}
+          <Route path="/dispatcher" element={
+            <ProtectedRoute><DispatcherPage /></ProtectedRoute>
+          } />
+
+          {/* Dashboard */}
           <Route path="/dashboard" element={
             <ProtectedRoute>
               <AdminLayout><DashboardPage /></AdminLayout>
@@ -70,6 +89,12 @@ function AnimatedRoutes() {
               <AdminLayout><DepExportPage /></AdminLayout>
             </ProtectedRoute>
           } />
+          <Route path="/drivers" element={
+            <ProtectedRoute>
+              <AdminLayout><DriversPage /></AdminLayout>
+            </ProtectedRoute>
+          } />
+
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </motion.div>

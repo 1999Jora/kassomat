@@ -115,6 +115,11 @@ export async function webhooksRoutes(fastify: FastifyInstance): Promise<void> {
               realtime.emitNewOrder(tenantId, toIncomingOrder(order));
             }
 
+            // Auto-assign delivery to driver with fewest active stops
+            await autoAssignDelivery(tenantId, (order as { id: string }).id).catch((err: unknown) => {
+              request.log.error({ err }, '[Lieferando] Auto-assign delivery failed');
+            });
+
             // Auto-accept if tenant has autoAccept enabled
             const tenant = await prisma.tenant.findUnique({
               where: { id: tenantId },
@@ -181,6 +186,11 @@ export async function webhooksRoutes(fastify: FastifyInstance): Promise<void> {
             if (realtime) {
               realtime.emitNewOrder(tenantId, toIncomingOrder(order));
             }
+
+            // Auto-assign delivery to driver with fewest active stops
+            await autoAssignDelivery(tenantId, (order as { id: string }).id).catch((err: unknown) => {
+              request.log.error({ err }, '[Wix] Auto-assign delivery failed');
+            });
           } catch (err: unknown) {
             request.log.error({ err }, '[Wix] Webhook processing failed');
           }
@@ -202,4 +212,40 @@ function getRealtimeService(
   fastify: FastifyInstance,
 ): RealtimeService | undefined {
   return (fastify as FastifyInstance & { realtime?: RealtimeService }).realtime;
+}
+
+// ---------------------------------------------------------------------------
+// Auto-assign delivery to driver with fewest active stops
+// ---------------------------------------------------------------------------
+
+async function autoAssignDelivery(tenantId: string, orderId: string): Promise<void> {
+  // Get active drivers
+  const drivers = await (prisma as any).driver.findMany({
+    where: { tenantId, isActive: true },
+    orderBy: { sortOrder: 'asc' },
+  }) as Array<{ id: string; sortOrder: number }>;
+  if (drivers.length === 0) {
+    // No drivers — create unassigned delivery
+    await (prisma as any).delivery.create({ data: { tenantId, orderId } });
+    return;
+  }
+  // Count active stops per driver
+  const counts = await Promise.all(
+    drivers.map(async (driver) => ({
+      driver,
+      count: await (prisma as any).delivery.count({
+        where: { driverId: driver.id, status: { in: ['pending', 'picked_up', 'en_route'] } },
+      }) as number,
+    }))
+  );
+  // Assign to driver with fewest stops
+  const best = counts.sort((a: { count: number }, b: { count: number }) => a.count - b.count)[0]!;
+  await (prisma as any).delivery.create({
+    data: {
+      tenantId,
+      orderId,
+      driverId: best.driver.id,
+      assignedAt: new Date(),
+    },
+  });
 }

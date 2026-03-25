@@ -38,4 +38,20 @@ export class RealtimeService {
   emitOrderUpdate(tenantId: string, order: unknown): void {
     this.emitToTenant(tenantId, 'order:updated', order);
   }
+
+  /**
+   * Emit a delivery update event to the tenant's room.
+   * Clients listen for "delivery:update" to refresh delivery state.
+   */
+  emitDeliveryUpdate(tenantId: string, delivery: unknown): void {
+    this.emitToTenant(tenantId, 'delivery:update', delivery);
+  }
+
+  /**
+   * Emit a driver GPS position update to the tenant's room.
+   * Clients listen for "driver:gps" to update map markers.
+   */
+  emitDriverGps(tenantId: string, data: { driverId: string; lat: number; lng: number; heading?: number; speed?: number }): void {
+    this.emitToTenant(tenantId, 'driver:gps', data);
+  }
 }

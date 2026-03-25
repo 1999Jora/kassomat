@@ -19,6 +19,8 @@ import { closingRoutes } from './modules/closing/closing.routes';
 import { webhooksRoutes } from './modules/webhooks/webhooks.routes';
 import { myposRoutes } from './modules/mypos/mypos.routes';
 import { wixRoutes } from './modules/wix/wix.routes';
+import { driversRoutes } from './modules/drivers/drivers.routes';
+import { deliveryRoutes } from './modules/delivery/delivery.routes';
 
 import { AppError } from './lib/errors';
 
@@ -150,6 +152,8 @@ export async function buildServer() {
   await fastify.register(webhooksRoutes);
   await fastify.register(myposRoutes);
   await fastify.register(wixRoutes);
+  await fastify.register(driversRoutes);
+  await fastify.register(deliveryRoutes);
 
   return fastify;
 }

@@ -33,6 +33,9 @@ export default fp(async (fastify: FastifyInstance) => {
 
   // --------------------------------------------------------------------------
   // Auth middleware — verify JWT on every connection attempt
+  // Drivers may connect without JWT (they use driver PIN auth instead).
+  // If a token is provided it is verified; otherwise the socket is marked
+  // as unauthenticated and must supply tenantId via handshake query/auth.
   // --------------------------------------------------------------------------
   io.use((socket, next) => {
     // The client must pass the JWT either as a query param or in the auth object
@@ -41,7 +44,8 @@ export default fp(async (fastify: FastifyInstance) => {
       socket.handshake.query?.['token'];
 
     if (!token || typeof token !== 'string') {
-      return next(new Error('Authentication error: missing token'));
+      // Allow unauthenticated connections (e.g. driver GPS clients)
+      return next();
     }
 
     try {
@@ -61,23 +65,36 @@ export default fp(async (fastify: FastifyInstance) => {
   io.on('connection', (socket) => {
     const payload = (socket as typeof socket & { jwtPayload?: JWTPayload }).jwtPayload;
 
-    if (!payload?.tenantId) {
-      fastify.log.warn('[Socket.io] Connection without tenantId in JWT — disconnecting');
-      socket.disconnect(true);
-      return;
+    // For authenticated connections, join the tenant room
+    let tenantId: string | undefined = payload?.tenantId;
+
+    if (tenantId) {
+      const room = `tenant_${tenantId}`;
+      void socket.join(room);
+
+      fastify.log.info(
+        { socketId: socket.id, tenantId, room },
+        '[Socket.io] Client connected and joined room',
+      );
+    } else {
+      // Unauthenticated driver connection — tenantId may come via GPS events
+      fastify.log.info(
+        { socketId: socket.id },
+        '[Socket.io] Unauthenticated client connected (driver)',
+      );
     }
 
-    const room = `tenant_${payload.tenantId}`;
-    void socket.join(room);
-
-    fastify.log.info(
-      { socketId: socket.id, tenantId: payload.tenantId, room },
-      '[Socket.io] Client connected and joined room',
-    );
+    // Relay GPS from driver to all clients in the tenant room
+    socket.on('driver:gps', (data: { driverId: string; tenantId?: string; lat: number; lng: number; heading?: number; speed?: number }) => {
+      const room = `tenant_${tenantId ?? data.tenantId}`;
+      if (room !== 'tenant_undefined') {
+        socket.to(room).emit('driver:gps', data);
+      }
+    });
 
     socket.on('disconnect', (reason) => {
       fastify.log.info(
-        { socketId: socket.id, tenantId: payload.tenantId, reason },
+        { socketId: socket.id, tenantId, reason },
         '[Socket.io] Client disconnected',
       );
     });

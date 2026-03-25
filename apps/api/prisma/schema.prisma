@@ -108,6 +108,14 @@ enum ATrustEnvironment {
   production
 }
 
+enum DeliveryStatus {
+  pending
+  picked_up
+  en_route
+  delivered
+  cancelled
+}
+
 // ============================================================
 // TENANT
 // ============================================================
@@ -169,6 +177,8 @@ model Tenant {
   dailyClosings DailyClosing[]
   depEntries    DEPEntry[]
   printJobs     PrintJob[]
+  drivers       Driver[]
+  deliveries    Delivery[]
 
   @@index([slug])
   @@index([status])
@@ -410,6 +420,7 @@ model IncomingOrder {
   tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   items    IncomingOrderItem[]
   receipts Receipt[]  // Bons die aus dieser Order erstellt wurden
+  delivery Delivery?
 
   @@unique([tenantId, externalId])
   @@index([tenantId])
@@ -502,4 +513,50 @@ model PrintJob {
 
   @@index([tenantId])
   @@index([status])
+}
+
+// ============================================================
+// FAHRER & LIEFERUNGEN
+// ============================================================
+
+model Driver {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  pin       String
+  color     String   @default("#4f8ef7")
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deliveries Delivery[]
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+}
+
+model Delivery {
+  id          String         @id @default(uuid())
+  tenantId    String
+  orderId     String         @unique
+  driverId    String?
+  status      DeliveryStatus @default(pending)
+  position    Int            @default(0)
+  geocodedLat Float?
+  geocodedLng Float?
+  assignedAt  DateTime?
+  pickedUpAt  DateTime?
+  deliveredAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  driver Driver?       @relation(fields: [driverId], references: [id])
+  order  IncomingOrder @relation(fields: [orderId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, driverId])
+  @@index([driverId])
 }

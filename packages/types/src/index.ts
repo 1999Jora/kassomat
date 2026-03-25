@@ -555,6 +555,42 @@ export interface WebSocketEvent<T = unknown> {
 }
 
 // ============================================================
+// FAHRER & LIEFERUNGEN
+// ============================================================
+
+export interface Driver {
+  id: string;
+  name: string;
+  pin: string;
+  color: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface Delivery {
+  id: string;
+  orderId: string;
+  driverId: string | null;
+  status: 'pending' | 'picked_up' | 'en_route' | 'delivered' | 'cancelled';
+  position: number;
+  geocodedLat?: number | null;
+  geocodedLng?: number | null;
+  assignedAt?: string | null;
+  pickedUpAt?: string | null;
+  deliveredAt?: string | null;
+  driver?: Driver | null;
+  order?: IncomingOrder;
+}
+
+export interface DriverGpsEvent {
+  driverId: string;
+  lat: number;
+  lng: number;
+  heading?: number;
+  speed?: number;
+}
+
+// ============================================================
 // DRUCKER
 // ============================================================
 
