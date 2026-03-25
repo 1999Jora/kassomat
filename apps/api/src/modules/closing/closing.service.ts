@@ -84,7 +84,7 @@ export class ClosingService {
       where: {
         tenantId,
         type: 'sale',
-        status: { in: ['signed', 'printed'] },
+        status: { in: ['pending', 'signed', 'printed'] },
         createdAt: { gte: new Date(`${from}T00:00:00`), lte: new Date(`${to}T23:59:59`) },
       },
       include: { items: true },

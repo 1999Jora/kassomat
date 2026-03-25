@@ -356,7 +356,7 @@ export default function PaymentPanel() {
 
   // ── Wait for RKSV, then print ─────────────────────────────────────────────────
 
-  async function waitAndPrint(receiptId: string) {
+  async function waitAndPrint(receiptId: string, pdfWindow?: Window | null) {
     // Wait for RKSV signature (shows spinner in SuccessScreen)
     await waitForRksvSignature(receiptId);
     setSigned(true);
@@ -370,7 +370,12 @@ export default function PaymentPanel() {
       }
     } else if (mode === 'pdf') {
       const url = getDigitalReceiptUrl(receiptId);
-      window.open(url, '_blank', 'noopener');
+      // Navigate the pre-opened window (avoids popup blocker); fallback to new window
+      if (pdfWindow && !pdfWindow.closed) {
+        pdfWindow.location.href = url;
+      } else {
+        window.open(url, '_blank', 'noopener');
+      }
     }
 
     // After print/pdf, clear cart after short delay
@@ -396,6 +401,14 @@ export default function PaymentPanel() {
   async function handleCreateReceipt() {
     if (cartItems.length === 0) return;
     setProcessing(true);
+
+    // Open PDF window synchronously here — BEFORE any await — so browsers
+    // don't block it as a popup (window.open must happen in the click handler).
+    const mode = getPrintMode();
+    let pdfWindow: Window | null = null;
+    if (mode === 'pdf' && paymentMethod !== 'card') {
+      pdfWindow = window.open('about:blank', '_blank', 'noopener');
+    }
 
     if (paymentMethod === 'card') {
       // ── Card flow ──────────────────────────────────────────────────────────
@@ -465,7 +478,7 @@ export default function PaymentPanel() {
         void queryClient.invalidateQueries({ queryKey: ['analytics'] });
         setChange(cashChange);
         setDone(true);
-        void waitAndPrint(receipt.id);
+        void waitAndPrint(receipt.id, pdfWindow);
       } catch {
         setProcessing(false);
       }
