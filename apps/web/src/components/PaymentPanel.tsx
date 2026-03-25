@@ -5,6 +5,7 @@ import NumPad from './NumPad';
 import api, { createReceipt, printReceiptById, getDigitalReceiptUrl, getPrintMode } from '../lib/api';
 import type { Receipt } from '@kassomat/types';
 import { io, Socket } from 'socket.io-client';
+import { useQueryClient } from '@tanstack/react-query';
 
 const PAYMENT_METHODS = [
   { id: 'cash', label: 'BAR', icon: '💵' },
@@ -202,6 +203,7 @@ export default function PaymentPanel() {
     setCardPaymentState,
     setMobileTab,
   } = useAppStore();
+  const queryClient = useQueryClient();
 
   const [cashInput, setCashInput] = useState('');
   const [tip, setTip] = useState(0);
@@ -270,6 +272,8 @@ export default function PaymentPanel() {
   function handleCardConfirmed() {
     stopCardMonitoring();
     setCardPaymentState('confirmed');
+    void queryClient.invalidateQueries({ queryKey: ['receipts-recent'] });
+    void queryClient.invalidateQueries({ queryKey: ['analytics'] });
     setDone(true);
     setTimeout(() => {
       clearCart();
@@ -448,6 +452,8 @@ export default function PaymentPanel() {
         });
 
         void triggerPrint(receipt.id);
+        void queryClient.invalidateQueries({ queryKey: ['receipts-recent'] });
+        void queryClient.invalidateQueries({ queryKey: ['analytics'] });
         setChange(cashChange);
         setDone(true);
         setTimeout(() => {

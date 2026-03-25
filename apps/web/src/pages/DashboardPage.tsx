@@ -143,7 +143,7 @@ export default function DashboardPage() {
   const { data: receipts, isLoading: receiptsLoading } = useQuery<Receipt[]>({
     queryKey: ['receipts-recent'],
     queryFn: async () => {
-      const { data } = await api.get<RecentReceiptsResponse>('/receipts?limit=10&sort=desc');
+      const { data } = await api.get<RecentReceiptsResponse>('/receipts?pageSize=10');
       return data.data.items;
     },
   });
