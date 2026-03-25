@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Driver } from '@kassomat/types';
 
 const API = import.meta.env.VITE_API_URL as string;
@@ -12,6 +13,7 @@ export default function DriverPINGate({ drivers, onSuccess }: Props) {
   const [selected, setSelected] = useState<Driver | null>(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
+  const navigate = useNavigate();
 
   function handlePad(digit: string) {
     if (pin.length >= 4) return;
@@ -19,7 +21,6 @@ export default function DriverPINGate({ drivers, onSuccess }: Props) {
     setPin(next);
     setError('');
     if (next.length === 4 && selected) {
-      // auto-verify on 4 digits
       setTimeout(() => {
         fetch(`${API}/drivers/verify-pin`, {
           method: 'POST',
@@ -36,17 +37,36 @@ export default function DriverPINGate({ drivers, onSuccess }: Props) {
   if (!selected) {
     return (
       <div className="min-h-screen bg-[#0f1117] flex flex-col items-center justify-center p-6 gap-4">
+        {/* Zurück */}
+        <button
+          onClick={() => navigate('/')}
+          className="absolute top-4 left-4 flex items-center gap-2 text-white/40 hover:text-white/70 text-sm transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M19 12H5M12 5l-7 7 7 7" />
+          </svg>
+          Home
+        </button>
+
         <h2 className="text-xl font-bold text-white mb-2">Wer bist du?</h2>
-        {drivers.map((d) => (
-          <button
-            key={d.id}
-            onClick={() => setSelected(d)}
-            className="w-full max-w-xs py-4 rounded-xl font-semibold text-white text-lg"
-            style={{ backgroundColor: d.color + '33', borderColor: d.color, borderWidth: 2 }}
-          >
-            {d.name}
-          </button>
-        ))}
+
+        {drivers.length === 0 ? (
+          <div className="text-center mt-4">
+            <p className="text-white/40 text-sm mb-2">Noch keine Fahrer konfiguriert.</p>
+            <p className="text-white/30 text-xs">Bitte im Dashboard unter "Fahrer" anlegen.</p>
+          </div>
+        ) : (
+          drivers.map((d) => (
+            <button
+              key={d.id}
+              onClick={() => setSelected(d)}
+              className="w-full max-w-xs py-4 rounded-xl font-semibold text-white text-lg transition-opacity hover:opacity-80"
+              style={{ backgroundColor: d.color + '33', borderColor: d.color, borderWidth: 2 }}
+            >
+              {d.name}
+            </button>
+          ))
+        )}
       </div>
     );
   }
