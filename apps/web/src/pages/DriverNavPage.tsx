@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTheme } from '../context/ThemeContext';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useDeliveryStore } from '../store/useDeliveryStore';
@@ -63,6 +64,7 @@ export default function DriverNavPage() {
   const [pickedUp, setPickedUp] = useState(false);
   const [position, setPosition] = useState<GeolocationPosition | null>(null);
   const navigate = useNavigate();
+  const { theme } = useTheme();
 
   const mapRef = useRef<maplibregl.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -164,11 +166,7 @@ export default function DriverNavPage() {
         sources: {
           osm: {
             type: 'raster',
-            tiles: [
-              'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-              'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-              'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-            ],
+            tiles: ['a','b','c'].map(s => `https://${s}.basemaps.cartocdn.com/${theme === 'light' ? 'light_all' : 'dark_all'}/{z}/{x}/{y}.png`),
             tileSize: 256,
             attribution: '© OpenStreetMap contributors © CARTO',
           },

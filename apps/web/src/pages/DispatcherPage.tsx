@@ -6,6 +6,12 @@ import { useDeliveryStore } from '../store/useDeliveryStore';
 import type { Delivery, DriverGpsEvent } from '@kassomat/types';
 import { io } from 'socket.io-client';
 import useAuthStore from '../store/useAuthStore';
+import { useTheme } from '../context/ThemeContext';
+
+function getMapTiles(theme: 'dark' | 'light') {
+  const style = theme === 'light' ? 'light_all' : 'dark_all';
+  return ['a', 'b', 'c'].map(s => `https://${s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}.png`);
+}
 
 const API = import.meta.env.VITE_API_URL as string;
 const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL ?? API) as string;
@@ -30,6 +36,7 @@ export default function DispatcherPage() {
   const { deliveries, drivers, driverLocations, setDeliveries, setDrivers, upsertDelivery, updateDriverLocation } = useDeliveryStore();
   const { token } = useAuthStore();
   const navigate = useNavigate();
+  const { theme } = useTheme();
   const [activeDriverTab, setActiveDriverTab] = useState<string>('all');
   const mapRef = useRef<maplibregl.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -65,11 +72,7 @@ export default function DispatcherPage() {
         sources: {
           osm: {
             type: 'raster',
-            tiles: [
-              'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-              'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-              'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-            ],
+            tiles: getMapTiles(theme),
             tileSize: 256,
           },
         },
@@ -81,6 +84,23 @@ export default function DispatcherPage() {
     mapRef.current = map;
     return () => { map.remove(); mapRef.current = null; };
   }, []);
+
+  // Tiles bei Theme-Wechsel aktualisieren
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const src = map.getSource('osm') as maplibregl.RasterTileSource | undefined;
+    if (src) {
+      // MapLibre hat keine direkte setTiles API — Style neu setzen
+      map.setStyle({
+        version: 8,
+        sources: {
+          osm: { type: 'raster', tiles: getMapTiles(theme), tileSize: 256 },
+        },
+        layers: [{ id: 'base', type: 'raster', source: 'osm' }],
+      });
+    }
+  }, [theme]);
 
   // Update driver markers on map
   useEffect(() => {
