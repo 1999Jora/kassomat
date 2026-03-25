@@ -14,6 +14,8 @@ const registerSchema = z.object({
 
 const updateSchema = z.object({
   name: z.string().min(2).optional(),
+  address: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
   receiptFooter: z.string().nullable().optional(),
   printerIp: z.string().nullable().optional(),
   printerPort: z.number().int().min(1).max(65535).nullable().optional(),

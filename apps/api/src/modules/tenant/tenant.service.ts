@@ -20,6 +20,8 @@ export interface RegisterTenantInput {
 
 export interface UpdateTenantInput {
   name?: string;
+  address?: string | null;
+  city?: string | null;
   receiptFooter?: string | null;
   printerIp?: string | null;
   printerPort?: number | null;
@@ -108,6 +110,8 @@ export class TenantService {
     }
 
     if (input.name !== undefined) updateData['name'] = input.name;
+    if (input.address !== undefined) updateData['address'] = input.address;
+    if (input.city !== undefined) updateData['city'] = input.city;
     if (input.receiptFooter !== undefined) updateData['receiptFooter'] = input.receiptFooter;
     if (input.printerIp !== undefined) updateData['printerIp'] = input.printerIp;
     if (input.printerPort !== undefined) updateData['printerPort'] = input.printerPort;
@@ -209,6 +213,8 @@ export class TenantService {
       settings: {
         currency: tenant.currency,
         timezone: tenant.timezone,
+        address: tenant.address ?? null,
+        city: tenant.city ?? null,
         vatNumber: tenant.vatNumber,
         receiptFooter: tenant.receiptFooter,
         printerIp: tenant.printerIp,

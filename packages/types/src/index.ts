@@ -38,6 +38,10 @@ export interface TenantSettings {
   currency: string;
   /** IANA Timezone, Standard "Europe/Vienna" */
   timezone: string;
+  /** Straße und Hausnummer */
+  address: string | null;
+  /** PLZ und Ort */
+  city: string | null;
   /** Österreichische Umsatzsteuer-Identifikationsnummer (UID) */
   vatNumber: string | null;
   /** Fußzeile auf Bons (z.B. "Vielen Dank für Ihren Besuch!") */

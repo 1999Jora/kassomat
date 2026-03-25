@@ -118,6 +118,8 @@ interface TenantResponse {
 function GeneralTab({ tenant }: { tenant: Tenant }) {
   const qc = useQueryClient();
   const [name, setName] = useState(tenant.name);
+  const [address, setAddress] = useState(tenant.settings.address ?? '');
+  const [city, setCity] = useState(tenant.settings.city ?? '');
   const [vatNumber, setVatNumber] = useState(tenant.settings.vatNumber ?? '');
   const [receiptFooter, setReceiptFooter] = useState(tenant.settings.receiptFooter ?? '');
 
@@ -134,6 +136,8 @@ function GeneralTab({ tenant }: { tenant: Tenant }) {
     e.preventDefault();
     mutation.mutate({
       name,
+      address: address || null,
+      city: city || null,
       vatNumber: vatNumber || null,
       receiptFooter: receiptFooter || null,
     });
@@ -144,6 +148,23 @@ function GeneralTab({ tenant }: { tenant: Tenant }) {
       <Field label="Firmenname">
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Mein Betrieb" />
       </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Straße & Hausnummer">
+          <Input
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="Musterstraße 1"
+          />
+        </Field>
+        <Field label="PLZ & Ort">
+          <Input
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            placeholder="6020 Innsbruck"
+          />
+        </Field>
+      </div>
 
       <Field label="UID-Nummer" hint="Österreichische Umsatzsteuer-ID (z.B. ATU12345678)">
         <Input

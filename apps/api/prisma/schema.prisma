@@ -135,6 +135,8 @@ model Tenant {
   // Settings (inline, kein separates Model nötig)
   currency        String  @default("EUR")
   timezone        String  @default("Europe/Vienna")
+  address         String?
+  city            String?
   vatNumber       String?
   receiptFooter   String?
   printerIp       String?
