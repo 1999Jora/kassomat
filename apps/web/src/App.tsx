@@ -14,6 +14,7 @@ import HomeScreen from './pages/HomeScreen';
 import DriverNavPage from './pages/DriverNavPage';
 import DispatcherPage from './pages/DispatcherPage';
 import DriversPage from './pages/DriversPage';
+import { Toaster } from 'react-hot-toast';
 import { useAppStore } from './store/useAppStore';
 import { useRealtimeOrders } from './hooks/useRealtimeOrders';
 import { ThemeProvider } from './context/ThemeContext';
@@ -109,6 +110,13 @@ export default function App() {
         <BrowserRouter>
           <AnimatedRoutes />
         </BrowserRouter>
+        <Toaster
+          position="bottom-right"
+          toastOptions={{
+            style: { background: '#1a1f25', color: '#fff', border: '1px solid rgba(255,255,255,0.08)' },
+            success: { iconTheme: { primary: '#00e87a', secondary: '#080a0c' } },
+          }}
+        />
       </QueryClientProvider>
     </ThemeProvider>
   );
