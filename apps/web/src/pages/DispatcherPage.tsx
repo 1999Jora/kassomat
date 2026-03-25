@@ -84,7 +84,13 @@ export default function DispatcherPage() {
       zoom: 12,
     });
     mapRef.current = map;
-    return () => { map.remove(); mapRef.current = null; };
+    // Resize after mount so canvas gets correct dimensions
+    map.once('load', () => map.resize());
+    setTimeout(() => map.resize(), 100);
+    // ResizeObserver for dynamic layout changes
+    const ro = new ResizeObserver(() => map.resize());
+    ro.observe(mapContainerRef.current);
+    return () => { ro.disconnect(); map.remove(); mapRef.current = null; };
   }, []);
 
   // Tiles bei Theme-Wechsel aktualisieren
@@ -183,14 +189,14 @@ export default function DispatcherPage() {
   const getDriverDeliveries = (driverId: string) => activeDeliveries.filter(d => d.driverId === driverId);
 
   return (
-    <div className="h-screen bg-[#0f1117] flex overflow-hidden">
+    <div className="h-screen bg-[#080a0c] flex overflow-hidden">
       {/* Left panel */}
-      <div className="w-full max-w-md flex flex-col border-r border-white/8 overflow-hidden">
+      <div className="w-full max-w-md flex flex-col border-r border-white/[0.06] overflow-hidden">
         {/* Header */}
-        <div className="p-4 border-b border-white/8 flex items-center gap-3">
+        <div className="p-4 border-b border-white/[0.06] flex items-center gap-3">
           <button
             onClick={() => navigate('/')}
-            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/8 shrink-0"
+            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/[0.06] shrink-0"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/>
@@ -203,7 +209,7 @@ export default function DispatcherPage() {
         </div>
 
         {/* Driver tabs */}
-        <div className="flex gap-2 p-3 border-b border-white/8 overflow-x-auto">
+        <div className="flex gap-2 p-3 border-b border-white/[0.06] overflow-x-auto">
           <button
             onClick={() => setActiveDriverTab('all')}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap ${activeDriverTab === 'all' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white'}`}
@@ -236,7 +242,7 @@ export default function DispatcherPage() {
           {filtered.map(delivery => {
             const order = delivery.order as any;
             return (
-              <div key={delivery.id} className="bg-[#181c27] rounded-xl p-3 border border-white/5">
+              <div key={delivery.id} className="bg-[#0e1115] rounded-xl p-3 border border-white/5">
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex-1 min-w-0">
                     <p className="text-white font-medium text-sm truncate">{order?.customerName ?? 'Unbekannt'}</p>
@@ -272,13 +278,13 @@ export default function DispatcherPage() {
         </div>
 
         {/* Stats footer */}
-        <div className="p-3 border-t border-white/8 grid grid-cols-3 gap-2">
+        <div className="p-3 border-t border-white/[0.06] flex gap-2">
           {drivers.filter(d => d.isActive).map(driver => {
             const dDeliveries = deliveries.filter(d2 => d2.driverId === driver.id);
             const done = dDeliveries.filter(d2 => d2.status === 'delivered').length;
             const active = dDeliveries.filter(d2 => d2.status !== 'delivered' && d2.status !== 'cancelled').length;
             return (
-              <div key={driver.id} className="rounded-lg p-2 text-center" style={{ backgroundColor: driver.color + '11' }}>
+              <div key={driver.id} className="flex-1 rounded-lg p-2 text-center" style={{ backgroundColor: driver.color + '11' }}>
                 <p className="text-xs font-medium" style={{ color: driver.color }}>{driver.name}</p>
                 <p className="text-white text-sm font-bold">{active} offen</p>
                 <p className="text-white/30 text-xs">{done} erledigt</p>
@@ -289,7 +295,9 @@ export default function DispatcherPage() {
       </div>
 
       {/* Map (hidden on mobile, shown on tablet+) */}
-      <div ref={mapContainerRef} className="hidden md:flex flex-1" />
+      <div className="hidden md:flex flex-1">
+        <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+      </div>
     </div>
   );
 }
