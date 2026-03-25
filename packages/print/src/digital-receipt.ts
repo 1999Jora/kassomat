@@ -9,6 +9,7 @@
  * Dates are formatted in Austrian locale: DD.MM.YYYY HH:MM
  */
 
+import QRCode from 'qrcode';
 import type { ReceiptData, TenantInfo } from './types';
 
 // ============================================================
@@ -69,7 +70,7 @@ function esc(text: string): string {
  * @param tenant   Tenant info for the receipt header
  * @returns        Complete HTML document string
  */
-export function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: TenantInfo): string {
+export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: TenantInfo): Promise<string> {
   // Build item rows HTML
   const itemRows = receipt.items.map((item) => {
     const lineTotal = formatEuro(item.totalGross);
@@ -137,17 +138,25 @@ export function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: TenantI
        </tr>`
     : '';
 
-  // RKSV QR section — rendered as a link for digital receipts (no raster image needed)
-  const rksvSection = receipt.rksvQrCodeData
-    ? `<tr>
-         <td colspan="2" style="padding:20px 0 8px 0;text-align:center;">
-           <p style="margin:0 0 8px;font-size:12px;color:#888;letter-spacing:0.05em;text-transform:uppercase;">RKSV-Signatur</p>
-           <div style="display:inline-block;padding:8px;border:1px solid #e2e8f0;border-radius:4px;background:#fafafa;">
-             <p style="margin:0;font-size:10px;font-family:monospace;word-break:break-all;color:#333;max-width:320px;">${esc(receipt.rksvQrCodeData)}</p>
-           </div>
-         </td>
-       </tr>`
-    : '';
+  // RKSV QR Code — als echtes SVG rendern
+  let rksvSection = '';
+  if (receipt.rksvQrCodeData) {
+    const qrSvg = await QRCode.toString(receipt.rksvQrCodeData, {
+      type: 'svg',
+      width: 160,
+      margin: 1,
+      color: { dark: '#1a202c', light: '#ffffff' },
+    });
+    rksvSection = `<tr>
+       <td colspan="2" style="padding:20px 0 8px 0;text-align:center;">
+         <p style="margin:0 0 10px;font-size:12px;color:#888;letter-spacing:0.05em;text-transform:uppercase;">RKSV-Prüfcode</p>
+         <div style="display:inline-block;padding:8px;border:1px solid #e2e8f0;border-radius:4px;background:#fff;">
+           ${qrSvg}
+         </div>
+         <p style="margin:8px 0 0;font-size:9px;font-family:monospace;word-break:break-all;color:#aaa;max-width:320px;">${esc(receipt.rksvQrCodeData.substring(0, 60))}…</p>
+       </td>
+     </tr>`;
+  }
 
   // Meta rows
   const rksvMetaRows: string[] = [];

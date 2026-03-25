@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import type { Tenant, TenantSettings, Category } from '@kassomat/types';
-import api from '../lib/api';
+import api, { createNullReceipt, createTrainingReceipt, createClosingReceipt } from '../lib/api';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -168,6 +168,91 @@ function GeneralTab({ tenant }: { tenant: Tenant }) {
   );
 }
 
+// ─── RKSV Sonderbeleg-Buttons ─────────────────────────────────────────────────
+
+function RksvSonderbelegeSection() {
+  const [loading, setLoading] = useState<string | null>(null);
+  const [closingId, setClosingId] = useState('KASSE-01');
+
+  async function handle(type: 'null' | 'training' | 'closing') {
+    setLoading(type);
+    try {
+      if (type === 'null') await createNullReceipt();
+      else if (type === 'training') await createTrainingReceipt();
+      else await createClosingReceipt(closingId);
+      toast.success(type === 'null' ? 'Nullbeleg erstellt' : type === 'training' ? 'Trainingsbeleg erstellt' : 'Schlussbeleg erstellt');
+    } catch {
+      toast.error('Fehler beim Erstellen des Belegs');
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-semibold text-white/40 uppercase tracking-wider">RKSV Sonderbelege</p>
+
+      <div className="grid grid-cols-1 gap-2">
+        {/* Nullbeleg */}
+        <div className="flex items-center justify-between bg-[#080a0c] border border-white/[0.06] rounded-lg px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-white/80">Nullbeleg</p>
+            <p className="text-xs text-white/40">Signaturketten-Test, €0 Umsatz</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => handle('null')}
+            disabled={loading !== null}
+            className="text-xs bg-white/[0.06] hover:bg-white/10 text-white/70 border border-white/[0.08] px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+          >
+            {loading === 'null' ? '...' : 'Erstellen'}
+          </button>
+        </div>
+
+        {/* Trainingsbeleg */}
+        <div className="flex items-center justify-between bg-[#080a0c] border border-white/[0.06] rounded-lg px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-white/80">Trainingsbeleg</p>
+            <p className="text-xs text-white/40">Schulungsmodus — TRA-Marker, kein Umsatzeffekt</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => handle('training')}
+            disabled={loading !== null}
+            className="text-xs bg-[#00e87a]/10 hover:bg-[#00e87a]/20 text-[#00e87a] border border-[#00e87a]/20 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+          >
+            {loading === 'training' ? '...' : 'Erstellen'}
+          </button>
+        </div>
+
+        {/* Schlussbeleg */}
+        <div className="bg-[#080a0c] border border-red-500/20 rounded-lg px-4 py-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-white/80">Schlussbeleg</p>
+              <p className="text-xs text-white/40">Kasse außer Betrieb — bei FinanzOnline einreichen</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handle('closing')}
+              disabled={loading !== null}
+              className="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+            >
+              {loading === 'closing' ? '...' : 'Erstellen'}
+            </button>
+          </div>
+          <input
+            value={closingId}
+            onChange={(e) => setClosingId(e.target.value)}
+            className="w-full bg-black/30 border border-white/[0.06] rounded px-2.5 py-1.5 text-xs text-white/60 focus:outline-none focus:border-red-500/30"
+            placeholder="Kassen-ID (z.B. KASSE-01)"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── A-Trust tab ──────────────────────────────────────────────────────────────
 
 function ATrustTab({ settings }: { settings: TenantSettings }) {
@@ -255,6 +340,10 @@ function ATrustTab({ settings }: { settings: TenantSettings }) {
           </button>
         </div>
       </form>
+
+      <div className="border-t border-white/[0.06] pt-5">
+        <RksvSonderbelegeSection />
+      </div>
     </div>
   );
 }

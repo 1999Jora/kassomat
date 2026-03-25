@@ -279,7 +279,7 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
       printerPort: tenant.printerPort ?? null,
     };
 
-    const html = generateDigitalReceiptHTML(receiptData, tenantInfo);
+    const html = await generateDigitalReceiptHTML(receiptData, tenantInfo);
 
     return reply.type('text/html').send(html);
   });
