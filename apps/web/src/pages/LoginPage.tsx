@@ -66,7 +66,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <span className="text-[#00e87a] font-bold text-2xl tracking-tight">kassomat</span>
-          <p className="mt-2 text-white/40 text-sm">Admin-Dashboard</p>
+          <p className="mt-2 text-white/40 text-sm">Anmeldung</p>
         </div>
 
         {/* Card */}
