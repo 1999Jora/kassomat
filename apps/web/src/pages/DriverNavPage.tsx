@@ -103,8 +103,12 @@ export default function DriverNavPage() {
     const myD = Array.isArray(data) ? data : [];
     setMyDeliveries(myD);
 
-    // Connect socket (no JWT needed for drivers)
-    const socket = io(SOCKET_URL, { transports: ['websocket'] });
+    // tenantId aus localStorage (gespeichert beim Admin-Login)
+    const userRaw = localStorage.getItem('kassomat_user');
+    const tenantId: string = userRaw ? (JSON.parse(userRaw) as { tenantId: string }).tenantId : '';
+
+    // Connect socket — tenantId im handshake query damit Server den Raum kennt
+    const socket = io(SOCKET_URL, { transports: ['websocket'], query: { tenantId } });
     socketRef.current = socket;
     socket.on('delivery:update', (d: Delivery) => {
       if (d.driverId === driver.id) {
@@ -122,9 +126,10 @@ export default function DriverNavPage() {
         (pos) => {
           setPosition(pos);
           setCurrentSpeed(pos.coords.speed ? pos.coords.speed * 3.6 : 0);
-          // Emit GPS to server
+          // Emit GPS to server — tenantId mitsenden damit Relay zum richtigen Raum geht
           socket.emit('driver:gps', {
             driverId: driver.id,
+            tenantId,
             lat: pos.coords.latitude,
             lng: pos.coords.longitude,
             heading: pos.coords.heading ?? undefined,

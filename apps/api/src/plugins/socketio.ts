@@ -65,22 +65,22 @@ export default fp(async (fastify: FastifyInstance) => {
   io.on('connection', (socket) => {
     const payload = (socket as typeof socket & { jwtPayload?: JWTPayload }).jwtPayload;
 
-    // For authenticated connections, join the tenant room
-    let tenantId: string | undefined = payload?.tenantId;
+    // tenantId aus JWT oder aus handshake query (Fahrer ohne Login)
+    let tenantId: string | undefined =
+      payload?.tenantId ??
+      (socket.handshake.query?.['tenantId'] as string | undefined);
 
     if (tenantId) {
       const room = `tenant_${tenantId}`;
       void socket.join(room);
-
       fastify.log.info(
         { socketId: socket.id, tenantId, room },
         '[Socket.io] Client connected and joined room',
       );
     } else {
-      // Unauthenticated driver connection — tenantId may come via GPS events
       fastify.log.info(
         { socketId: socket.id },
-        '[Socket.io] Unauthenticated client connected (driver)',
+        '[Socket.io] Unauthenticated client connected (no tenantId)',
       );
     }
 
