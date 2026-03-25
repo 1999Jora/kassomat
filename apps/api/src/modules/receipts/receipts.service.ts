@@ -1,7 +1,8 @@
 import { prisma } from '../../lib/prisma';
 import { rksvQueue } from '../../lib/queue';
 import { NotFoundError, ValidationError } from '../../lib/errors';
-import type { SalesChannel, PaymentMethod } from '@kassomat/types';
+import type { SalesChannel, PaymentMethod, VatRate } from '@kassomat/types';
+import type { Receipt as PrismaReceipt, ReceiptItem as PrismaReceiptItem } from '@prisma/client';
 
 const VAT_NUM: Record<string, 0 | 10 | 13 | 20> = {
   VAT_0: 0,
@@ -9,6 +10,62 @@ const VAT_NUM: Record<string, 0 | 10 | 13 | 20> = {
   VAT_13: 13,
   VAT_20: 20,
 };
+
+/** Map a flat Prisma receipt + items to the nested Receipt API shape */
+function toReceiptResponse(receipt: PrismaReceipt & { items: PrismaReceiptItem[] }) {
+  return {
+    id: receipt.id,
+    tenantId: receipt.tenantId,
+    receiptNumber: receipt.receiptNumber,
+    cashRegisterId: receipt.cashRegisterId,
+    type: receipt.type,
+    status: receipt.status,
+    createdAt: receipt.createdAt,
+    cashierId: receipt.cashierId,
+    channel: receipt.channel,
+    externalOrderId: receipt.externalOrderId,
+    items: receipt.items.map((item) => ({
+      id: item.id,
+      receiptId: item.receiptId,
+      productId: item.productId,
+      productName: item.productName,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      vatRate: (VAT_NUM[item.vatRate] ?? 20) as VatRate,
+      discount: item.discount,
+      totalNet: item.totalNet,
+      totalVat: item.totalVat,
+      totalGross: item.totalGross,
+    })),
+    payment: {
+      method: receipt.paymentMethod as PaymentMethod,
+      amountPaid: receipt.amountPaid,
+      change: receipt.change,
+      tip: receipt.tip,
+    },
+    totals: {
+      subtotalNet: receipt.subtotalNet,
+      vat0: receipt.vat0,
+      vat10: receipt.vat10,
+      vat13: receipt.vat13,
+      vat20: receipt.vat20,
+      totalVat: receipt.totalVat,
+      totalGross: receipt.totalGross,
+    },
+    rksv: {
+      registrierkasseId: receipt.rksv_registrierkasseId ?? '',
+      belegnummer: receipt.rksv_belegnummer ?? '',
+      barumsatzSumme: receipt.rksv_barumsatzSumme,
+      umsatzzaehlerEncrypted: receipt.rksv_umsatzzaehlerEncrypted ?? undefined,
+      previousReceiptHash: receipt.rksv_previousReceiptHash ?? '',
+      receiptHash: receipt.rksv_receiptHash ?? '',
+      signature: receipt.rksv_signature ?? '',
+      qrCodeData: receipt.rksv_qrCodeData ?? '',
+      signedAt: receipt.rksv_signedAt,
+      atCertificateSerial: receipt.rksv_atCertificateSerial ?? '',
+    },
+  };
+}
 
 export interface CreateReceiptItemInput {
   productId: string;
@@ -132,7 +189,7 @@ export class ReceiptsService {
       tenantId,
     });
 
-    return receipt;
+    return toReceiptResponse(receipt);
   }
 
   async getById(tenantId: string, receiptId: string) {
@@ -141,7 +198,7 @@ export class ReceiptsService {
       include: { items: true },
     });
     if (!receipt) throw new NotFoundError('Bon');
-    return receipt;
+    return toReceiptResponse(receipt);
   }
 
   async list(tenantId: string, filters: {
@@ -177,7 +234,7 @@ export class ReceiptsService {
       prisma.receipt.count({ where }),
     ]);
 
-    return { items, total, page, pageSize, hasMore: skip + items.length < total };
+    return { items: items.map(toReceiptResponse), total, page, pageSize, hasMore: skip + items.length < total };
   }
 
   /** Storno: neuer Bon mit negativen Beträgen */
@@ -250,7 +307,7 @@ export class ReceiptsService {
 
     await rksvQueue.add('sign_receipt', { receiptId: cancelReceipt.id, tenantId });
 
-    return cancelReceipt;
+    return toReceiptResponse(cancelReceipt);
   }
 
   /** Nullbeleg erstellen (RKSV-Test) */
@@ -304,6 +361,6 @@ export class ReceiptsService {
     });
 
     await rksvQueue.add('sign_receipt', { receiptId: receipt.id, tenantId });
-    return receipt;
+    return toReceiptResponse(receipt);
   }
 }

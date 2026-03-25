@@ -419,7 +419,7 @@ export default function PaymentPanel() {
         });
 
         // Step 2: Trigger print (non-blocking)
-        void triggerPrint(receipt.id);
+        void waitAndPrint(receipt.id);
 
         // Step 3: Initiate the terminal payment
         const { data: initiateData } = await api.post<{

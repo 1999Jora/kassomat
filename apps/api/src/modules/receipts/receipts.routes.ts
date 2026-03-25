@@ -110,7 +110,7 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
     const { id } = request.params as { id: string };
     const receipt = await service.getById(request.tenantId, id);
 
-    if (!receipt.rksv_signedAt) {
+    if (!receipt.rksv.signedAt) {
       return reply.code(202).send({
         success: false,
         error: { code: 'NOT_SIGNED_YET', message: 'Bon wird noch signiert. Bitte einen Moment warten.' },
@@ -140,30 +140,30 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
         productName: item.productName,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
-        vatRate: toNumericVatRate(item.vatRate),
+        vatRate: item.vatRate as 0 | 10 | 13 | 20,
         discount: item.discount,
         totalNet: item.totalNet,
         totalVat: item.totalVat,
         totalGross: item.totalGross,
       })),
       payment: {
-        method: receipt.paymentMethod as 'cash' | 'card' | 'online',
-        amountPaid: receipt.amountPaid,
-        change: receipt.change,
-        tip: receipt.tip,
+        method: receipt.payment.method,
+        amountPaid: receipt.payment.amountPaid,
+        change: receipt.payment.change,
+        tip: receipt.payment.tip,
       },
       totals: {
-        subtotalNet: receipt.subtotalNet,
-        vat0: receipt.vat0,
-        vat10: receipt.vat10,
-        vat13: receipt.vat13,
-        vat20: receipt.vat20,
-        totalVat: receipt.totalVat,
-        totalGross: receipt.totalGross,
+        subtotalNet: receipt.totals.subtotalNet,
+        vat0: receipt.totals.vat0,
+        vat10: receipt.totals.vat10,
+        vat13: receipt.totals.vat13,
+        vat20: receipt.totals.vat20,
+        totalVat: receipt.totals.totalVat,
+        totalGross: receipt.totals.totalGross,
       },
-      rksvQrCodeData: receipt.rksv_qrCodeData ?? null,
-      rksvBelegnummer: receipt.rksv_belegnummer ?? null,
-      rksvRegistrierkasseId: receipt.rksv_registrierkasseId ?? null,
+      rksvQrCodeData: receipt.rksv.qrCodeData || null,
+      rksvBelegnummer: receipt.rksv.belegnummer || null,
+      rksvRegistrierkasseId: receipt.rksv.registrierkasseId || null,
     };
 
     const tenantInfo: TenantInfo = {

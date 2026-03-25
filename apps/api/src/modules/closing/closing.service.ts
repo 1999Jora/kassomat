@@ -113,7 +113,7 @@ export class ClosingService {
       if (hourEntry) hourEntry.revenue += r.totalGross;
 
       for (const item of r.items) {
-        const entry = productTotals.get(item.productId) ?? { name: item.productName, quantity: 0, revenue: 0 };
+        const entry = productTotals.get(item.productId) ?? { productName: item.productName, quantity: 0, revenue: 0 };
         entry.quantity += item.quantity;
         entry.revenue += item.totalGross;
         productTotals.set(item.productId, entry);
