@@ -10,7 +10,7 @@ import type { Product, Category } from '@kassomat/types';
 
 function CategorySkeleton() {
   return (
-    <div className="flex items-center gap-1.5 px-3 py-2.5 overflow-x-auto shrink-0 border-b border-white/[0.06]">
+    <div className="flex items-center gap-1.5 px-3 py-2.5 overflow-x-auto scrollbar-none shrink-0 border-b border-white/[0.06]">
       {[...Array(5)].map((_, i) => (
         <div
           key={i}
@@ -97,7 +97,7 @@ export default function ArticleGrid() {
         <CategorySkeleton />
       ) : (
         <div
-          className="flex items-center gap-1.5 px-3 py-2.5 overflow-x-auto shrink-0 border-b border-white/[0.06]"
+          className="flex items-center gap-1.5 px-3 py-2.5 overflow-x-auto scrollbar-none shrink-0 border-b border-white/[0.06]"
           style={{ scrollbarWidth: 'none' }}
         >
           <button
@@ -143,7 +143,7 @@ export default function ArticleGrid() {
       )}
 
       {/* Product grid */}
-      <div className="flex-1 overflow-y-auto px-3 pt-2.5 pb-2">
+      <div className="flex-1 overflow-y-auto scrollbar-none px-3 pt-2.5 pb-2">
         {isLoading ? (
           <ProductGridSkeleton />
         ) : filtered.length === 0 ? (

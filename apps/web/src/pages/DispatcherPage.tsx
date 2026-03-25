@@ -235,7 +235,7 @@ export default function DispatcherPage() {
         </div>
 
         {/* Deliveries list */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        <div className="flex-1 overflow-y-auto scrollbar-none p-3 space-y-2">
           {filtered.length === 0 && (
             <p className="text-white/30 text-sm text-center mt-8">Keine Aufträge</p>
           )}

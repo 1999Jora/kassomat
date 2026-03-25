@@ -501,7 +501,7 @@ export default function PaymentPanel() {
   // ── Main panel ────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto">
+    <div className="flex flex-col h-full overflow-y-auto scrollbar-none">
       {/* Payment method selector */}
       <div className="px-3 pt-3 pb-2.5 border-b border-white/[0.06] shrink-0">
         <p className="text-[10px] text-[#6b7280] uppercase tracking-wider mb-2">Zahlungsart</p>

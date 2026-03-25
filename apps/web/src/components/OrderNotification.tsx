@@ -339,7 +339,7 @@ export default function OrderNotification({ onClose }: Props) {
         </div>
 
         {/* Order list */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+        <div className="flex-1 overflow-y-auto scrollbar-none p-3 space-y-2.5">
           {pendingOrders.length === 0 ? (
             <div className="py-16 flex flex-col items-center gap-3 text-[#6b7280]">
               <div className="w-14 h-14 rounded-2xl bg-white/[0.03] border border-white/[0.05] flex items-center justify-center">
