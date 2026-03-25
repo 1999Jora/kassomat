@@ -11,6 +11,13 @@ const VAT_NUM: Record<string, 0 | 10 | 13 | 20> = {
   VAT_20: 20,
 };
 
+function toVatEnum(rate: VatRate): 'VAT_0' | 'VAT_10' | 'VAT_13' | 'VAT_20' {
+  if (rate === 0) return 'VAT_0';
+  if (rate === 10) return 'VAT_10';
+  if (rate === 13) return 'VAT_13';
+  return 'VAT_20';
+}
+
 type ReceiptWithItems = Prisma.ReceiptGetPayload<{ include: { items: true } }>;
 
 /** Map a flat Prisma receipt + items to the nested Receipt API shape */
@@ -278,24 +285,24 @@ export class ReceiptsService {
           cashierId,
           channel: original.channel,
           externalOrderId: null,
-          paymentMethod: original.paymentMethod,
-          amountPaid: -original.amountPaid,
+          paymentMethod: original.payment.method,
+          amountPaid: -original.payment.amountPaid,
           change: 0,
           tip: 0,
-          subtotalNet: -original.subtotalNet,
-          vat0: -original.vat0,
-          vat10: -original.vat10,
-          vat13: -original.vat13,
-          vat20: -original.vat20,
-          totalVat: -original.totalVat,
-          totalGross: -original.totalGross,
+          subtotalNet: -original.totals.subtotalNet,
+          vat0: -original.totals.vat0,
+          vat10: -original.totals.vat10,
+          vat13: -original.totals.vat13,
+          vat20: -original.totals.vat20,
+          totalVat: -original.totals.totalVat,
+          totalGross: -original.totals.totalGross,
           items: {
             create: original.items.map(item => ({
               productId: item.productId,
               productName: item.productName,
               quantity: -item.quantity,
               unitPrice: item.unitPrice,
-              vatRate: item.vatRate,
+              vatRate: toVatEnum(item.vatRate),
               discount: item.discount,
               totalNet: -item.totalNet,
               totalVat: -item.totalVat,
@@ -309,7 +316,7 @@ export class ReceiptsService {
 
     await rksvQueue.add('sign_receipt', { receiptId: cancelReceipt.id, tenantId });
 
-    return toReceiptResponse(cancelReceipt);
+    return toReceiptResponse(cancelReceipt as ReceiptWithItems);
   }
 
   /** Nullbeleg erstellen (RKSV-Test) */
