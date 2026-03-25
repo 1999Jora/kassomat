@@ -41,6 +41,8 @@ export default function DispatcherPage() {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const driverMarkersRef = useRef<Record<string, maplibregl.Marker>>({});
+  // Refs to the time-label DOM elements so we can update them without re-render
+  const driverTimeLabelRefs = useRef<Record<string, HTMLElement>>({});
 
   // Load data
   useEffect(() => {
@@ -109,17 +111,59 @@ export default function DispatcherPage() {
     Object.entries(driverLocations).forEach(([driverId, loc]) => {
       const driver = drivers.find(d => d.id === driverId);
       if (!driver) return;
+
       if (driverMarkersRef.current[driverId]) {
+        // Nur Position updaten
         driverMarkersRef.current[driverId]!.setLngLat([loc.lng, loc.lat]);
       } else {
-        const el = document.createElement('div');
-        el.style.cssText = `width:14px;height:14px;background:${driver.color};border:2px solid white;border-radius:50%;box-shadow:0 0 0 6px ${driver.color}44;`;
-        driverMarkersRef.current[driverId] = new maplibregl.Marker({ element: el })
+        // Marker-Element mit Punkt + Name + Zeit
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:3px;cursor:default;';
+
+        const dot = document.createElement('div');
+        dot.style.cssText = `width:14px;height:14px;background:${driver.color};border:2px solid white;border-radius:50%;box-shadow:0 0 0 6px ${driver.color}44;flex-shrink:0;`;
+
+        const label = document.createElement('div');
+        label.style.cssText = `background:rgba(15,17,23,0.85);backdrop-filter:blur(6px);color:white;font-size:11px;font-weight:600;padding:2px 6px;border-radius:6px;white-space:nowrap;border:1px solid rgba(255,255,255,0.12);font-family:monospace;`;
+
+        const timeEl = document.createElement('span');
+        timeEl.style.cssText = `color:${driver.color};font-weight:400;margin-left:4px;`;
+        timeEl.textContent = '0s';
+
+        label.textContent = driver.name + ' ';
+        label.appendChild(timeEl);
+
+        wrap.appendChild(dot);
+        wrap.appendChild(label);
+
+        driverTimeLabelRefs.current[driverId] = timeEl;
+        driverMarkersRef.current[driverId] = new maplibregl.Marker({ element: wrap, anchor: 'bottom' })
           .setLngLat([loc.lng, loc.lat])
           .addTo(map);
       }
+
+      // Zeit-Label sofort aktualisieren
+      const timeEl = driverTimeLabelRefs.current[driverId];
+      if (timeEl) {
+        const secs = Math.round((Date.now() - loc.updatedAt) / 1000);
+        timeEl.textContent = `${secs}s`;
+      }
     });
   }, [driverLocations, drivers]);
+
+  // Sekunden-Ticker: alle 1s Zeit-Labels aktualisieren
+  useEffect(() => {
+    const id = setInterval(() => {
+      Object.entries(driverLocations).forEach(([driverId, loc]) => {
+        const timeEl = driverTimeLabelRefs.current[driverId];
+        if (timeEl) {
+          const secs = Math.round((Date.now() - loc.updatedAt) / 1000);
+          timeEl.textContent = `${secs}s`;
+        }
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [driverLocations]);
 
   // Reassign delivery
   async function reassign(deliveryId: string, driverId: string) {
