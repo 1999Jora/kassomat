@@ -293,7 +293,7 @@ export default function DriverNavPage() {
   }, []);
 
   if (loadingDrivers) {
-    return <div className="min-h-screen bg-[#0f1117] flex items-center justify-center text-white/50">Laden...</div>;
+    return <div className="min-h-screen bg-[#080a0c] flex items-center justify-center text-white/50">Laden...</div>;
   }
 
   if (!activeDriver) {
@@ -307,7 +307,7 @@ export default function DriverNavPage() {
   const totalStops = myDeliveries.length;
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#0f1117]">
+    <div className="relative w-screen h-screen overflow-hidden bg-[#080a0c]">
       {/* Map */}
       <div ref={mapContainerRef} className="absolute inset-0" />
 
@@ -355,7 +355,11 @@ export default function DriverNavPage() {
 
         {/* Action buttons */}
         <div className="flex gap-3">
-          {!pickedUp ? (
+          {activeDeliveries.length === 0 ? (
+            <div className="flex-1 py-4 rounded-xl text-center text-white/40 text-sm bg-[#0e1115] border border-white/[0.06]">
+              Warte auf Aufträge…
+            </div>
+          ) : !pickedUp ? (
             <button
               onClick={handlePickup}
               className="flex-1 py-4 rounded-xl font-semibold text-white text-base"
@@ -371,19 +375,19 @@ export default function DriverNavPage() {
               Zugestellt
             </button>
           ) : (
-            <div className="flex-1 py-4 rounded-xl text-center text-white/50 bg-[#181c27]">
+            <div className="flex-1 py-4 rounded-xl text-center text-white/50 bg-[#0e1115] border border-white/[0.06]">
               Alle Stops erledigt!
             </div>
           )}
           <button
             onClick={toggle3D}
-            className="px-4 py-4 rounded-xl text-white/60 text-sm bg-[#181c27] border border-white/10"
+            className="px-4 py-4 rounded-xl text-white/60 text-sm bg-[#0e1115] border border-white/[0.06]"
           >
             {is3D ? '2D' : '3D'}
           </button>
           <button
             onClick={centerOnMe}
-            className="px-4 py-4 rounded-xl text-white/60 bg-[#181c27] border border-white/10"
+            className="px-4 py-4 rounded-xl text-white/60 bg-[#0e1115] border border-white/[0.06]"
           >
             <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <circle cx="12" cy="12" r="3" /><path d="M12 2v3m0 14v3M2 12h3m14 0h3" />
