@@ -1038,9 +1038,74 @@ const VAT_OPTIONS: Array<{ value: 0 | 10 | 13 | 20; label: string }> = [
   { value: 20, label: '20%' },
 ];
 
+/**
+ * Infer Austrian VAT rate (MwSt) from product name + category name.
+ *
+ * Rules (§ 10 UStG):
+ *  13% — Wein/Sekt/Prosecco (Weinbauerzeugnisse)
+ *  20% — Bier, Spirituosen, Tabak, Standardsatz
+ *  10% — Lebensmittel, alkoholfreie Getränke, Kaffee, Tee
+ */
+function inferAustrianVatRate(productName: string, categoryName: string): 0 | 10 | 13 | 20 {
+  const text = (productName + ' ' + categoryName).toLowerCase();
+
+  // 13 %: Wein, Sekt, Prosecco, Champagner, Cava, Crémant (Weinbauerzeugnisse § 10 Abs. 3 Z 3)
+  const wine13 = ['wein', 'sekt', 'prosecco', 'champagner', 'champagne', 'cava', 'crémant', 'cremant', 'frizzante', 'spumante', 'grappa'];
+  if (wine13.some((k) => text.includes(k))) return 13;
+
+  // 20 %: Bier & Spirituosen (Alkohol außer Wein)
+  const alcohol20 = [
+    'bier', 'pils', 'pilsner', 'lager', 'weizen', 'weißbier', 'dunkel', 'märzen', 'radler', 'shandy',
+    'schnaps', 'schnapps', 'vodka', 'wodka', 'rum', 'gin', 'whiskey', 'whisky', 'tequila', 'mezcal',
+    'brandy', 'cognac', 'likör', 'likoer', 'aperol', 'campari', 'sambuca', 'baileys', 'absinth',
+    'shots', 'shot', 'spirituosen', 'hochprozent', 'destillat', 'obstbrand',
+    'tabak', 'zigarett', 'zigarre', 'shisha',
+  ];
+  if (alcohol20.some((k) => text.includes(k))) return 20;
+
+  // 10 %: Lebensmittel & alkoholfreie Getränke (§ 10 Abs. 2 Z 1)
+  const food10 = [
+    // Speisen / food
+    'speise', 'speisen', 'essen', 'food', 'snack', 'gericht', 'menü', 'menu', 'mahlzeit',
+    'frühstück', 'mittagessen', 'abendessen', 'jause', 'brotzeit',
+    'suppe', 'salat', 'vorspeise', 'hauptspeise', 'nachspeise', 'dessert', 'beilage',
+    'pizza', 'pasta', 'nudel', 'burger', 'sandwich', 'wrap', 'toast', 'brot', 'gebäck', 'semmel',
+    'kuchen', 'torte', 'strudel', 'mehlspeise', 'süßspeise', 'palatschinke', 'waffel',
+    'schnitzel', 'fleisch', 'fisch', 'meeresfrüchte', 'geflügel', 'wurst', 'schinken',
+    'gemüse', 'vegetarisch', 'vegan', 'käse', 'ei', 'omelette',
+    'pommes', 'kartoffel', 'reis', 'knödel', 'spätzle',
+    'kebab', 'döner', 'falafel', 'sushi', 'ramen',
+    // alkoholfreie Getränke
+    'wasser', 'mineral', 'mineralwasser', 'sodawasser', 'leitungswasser',
+    'saft', 'juice', 'orangensaft', 'apfelsaft', 'fruchtsaft',
+    'kaffee', 'coffee', 'espresso', 'cappuccino', 'latte', 'macchiato',
+    'melange', 'verlängerter', 'brauner', 'schwarzer', 'einspänner', 'franziskaner',
+    'tee', 'tea', 'eistee', 'iced tea',
+    'cola', 'pepsi', 'limonade', 'limo', 'fanta', 'sprite', 'almdudler', 'zitronade',
+    'energy drink', 'energydrink', 'red bull', 'monster',
+    'smoothie', 'milchshake', 'shake', 'milch', 'kakao', 'hot chocolate', 'schokolade',
+    'nestea', 'eistee', 'fruchtsaft', 'nektar',
+    // Kategorienamen
+    'getränk', 'getränke', 'drinks', 'beverages', 'alkoholfrei', 'soft drink', 'softdrink',
+    'kalt getränk', 'warm getränk', 'heißgetränk', 'kaltgetränk',
+  ];
+  if (food10.some((k) => text.includes(k))) return 10;
+
+  // Default: 20 % Normalsatz
+  return 20;
+}
+
+function numericVatRate(vatRate: number | string): 0 | 10 | 13 | 20 {
+  if (typeof vatRate === 'string') {
+    return parseInt((vatRate as string).replace('VAT_', ''), 10) as 0 | 10 | 13 | 20;
+  }
+  return vatRate as 0 | 10 | 13 | 20;
+}
+
 function ArticlesTab() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
+  const [autoAssigning, setAutoAssigning] = useState(false);
 
   const { data: products = [], isLoading } = useQuery<Product[]>({
     queryKey: ['products-all'],
@@ -1069,6 +1134,33 @@ function ArticlesTab() {
 
   const categoryMap = new Map(categories.map((c) => [c.id, c]));
 
+  async function handleAutoAssign() {
+    if (products.length === 0) return;
+    setAutoAssigning(true);
+    let changed = 0;
+    try {
+      for (const product of products) {
+        const catName = categoryMap.get(product.categoryId)?.name ?? '';
+        const suggested = inferAustrianVatRate(product.name, catName);
+        const current = numericVatRate(product.vatRate as number | string);
+        if (suggested !== current) {
+          await api.patch('/products/' + product.id, { vatRate: suggested });
+          changed++;
+        }
+      }
+      await qc.invalidateQueries({ queryKey: ['products-all'] });
+      toast.success(
+        changed > 0
+          ? `${changed} Artikel aktualisiert (Ö. Steuerrecht)`
+          : 'Alle MwSt-Sätze bereits korrekt',
+      );
+    } catch {
+      toast.error('Fehler bei der automatischen Zuweisung');
+    } finally {
+      setAutoAssigning(false);
+    }
+  }
+
   const filtered = products.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()),
   );
@@ -1088,14 +1180,52 @@ function ArticlesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-white/50 text-xs">MwSt-Satz pro Artikel anpassen. Änderungen werden sofort gespeichert.</p>
-        <Input
-          placeholder="Suchen…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-[200px]"
-        />
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <p className="text-white/70 text-sm font-medium">MwSt-Satz pro Artikel</p>
+          <p className="text-white/40 text-xs mt-0.5">Änderungen werden sofort gespeichert</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleAutoAssign}
+            disabled={autoAssigning || products.length === 0}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold bg-[#00e87a]/10 text-[#00e87a] border border-[#00e87a]/20 hover:bg-[#00e87a]/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {autoAssigning ? (
+              <>
+                <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Wird zugewiesen…
+              </>
+            ) : (
+              <>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
+                </svg>
+                Auto-MwSt (Ö. Steuerrecht)
+              </>
+            )}
+          </button>
+          <Input
+            placeholder="Suchen…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-[160px]"
+          />
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-3 text-xs text-white/40 bg-white/[0.02] rounded-lg px-3 py-2 border border-white/5">
+        <span><span className="text-yellow-400 font-semibold">13%</span> Wein, Sekt, Prosecco</span>
+        <span>·</span>
+        <span><span className="text-red-400 font-semibold">20%</span> Bier, Spirituosen, Standard</span>
+        <span>·</span>
+        <span><span className="text-[#00e87a] font-semibold">10%</span> Speisen, alkoholfreie Getränke</span>
       </div>
 
       {Array.from(grouped.entries()).map(([catId, { category, products: catProducts }]) => (
@@ -1108,39 +1238,50 @@ function ArticlesTab() {
             <span className="text-white/20 normal-case font-normal">({catProducts.length})</span>
           </p>
           <div className="space-y-1">
-            {catProducts.map((product) => (
-              <div
-                key={product.id}
-                className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/5"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm truncate">{product.name}</p>
-                  <p className="text-white/30 text-xs font-mono">
-                    €{(product.price / 100).toFixed(2).replace('.', ',')}
-                  </p>
-                </div>
-                <select
-                  value={
-                    typeof product.vatRate === 'string'
-                      ? parseInt((product.vatRate as string).replace('VAT_', ''), 10)
-                      : product.vatRate
-                  }
-                  onChange={(e) =>
-                    vatMutation.mutate({
-                      id: product.id,
-                      vatRate: parseInt(e.target.value) as 0 | 10 | 13 | 20,
-                    })
-                  }
-                  className="bg-[#080a0c] border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:border-[#00e87a]/60 transition-colors"
+            {catProducts.map((product) => {
+              const current = numericVatRate(product.vatRate as number | string);
+              const catName = categoryMap.get(product.categoryId)?.name ?? '';
+              const suggested = inferAustrianVatRate(product.name, catName);
+              const mismatch = suggested !== current;
+              return (
+                <div
+                  key={product.id}
+                  className={`flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border transition-colors ${
+                    mismatch
+                      ? 'bg-yellow-500/5 border-yellow-500/20'
+                      : 'bg-white/[0.03] border-white/5'
+                  }`}
                 >
-                  {VAT_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      MwSt {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ))}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm truncate">{product.name}</p>
+                    <p className="text-white/30 text-xs font-mono">
+                      €{(product.price / 100).toFixed(2).replace('.', ',')}
+                      {mismatch && (
+                        <span className="ml-2 text-yellow-400">→ {suggested}% empfohlen</span>
+                      )}
+                    </p>
+                  </div>
+                  <select
+                    value={current}
+                    onChange={(e) =>
+                      vatMutation.mutate({
+                        id: product.id,
+                        vatRate: parseInt(e.target.value) as 0 | 10 | 13 | 20,
+                      })
+                    }
+                    className={`bg-[#080a0c] border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-[#00e87a]/60 transition-colors ${
+                      mismatch ? 'border-yellow-500/40 text-yellow-300' : 'border-white/10 text-white'
+                    }`}
+                  >
+                    {VAT_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        MwSt {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
           </div>
         </div>
       ))}
