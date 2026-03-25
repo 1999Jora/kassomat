@@ -156,6 +156,16 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
          <p style="margin:8px 0 0;font-size:9px;font-family:monospace;word-break:break-all;color:#aaa;max-width:320px;">${esc(receipt.rksvQrCodeData.substring(0, 60))}…</p>
        </td>
      </tr>`;
+  } else {
+    rksvSection = `<tr>
+       <td colspan="2" style="padding:16px 0 8px 0;text-align:center;">
+         <div style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border:1px solid #fed7aa;border-radius:8px;background:#fff7ed;">
+           <span style="font-size:16px;">⚠️</span>
+           <span style="font-size:12px;color:#9a3412;font-weight:600;">Keine Verbindung zum RKSV-Server</span>
+         </div>
+         <p style="margin:6px 0 0;font-size:11px;color:#aaa;">Die Signatur wird nachgeholt sobald die Verbindung wiederhergestellt ist.</p>
+       </td>
+     </tr>`;
   }
 
   // Meta rows
@@ -351,12 +361,12 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
         </table>
       </div>
 
-      <!-- RKSV QR Code -->
-      ${receipt.rksvQrCodeData ? `<div class="section">
+      <!-- RKSV QR Code / Status -->
+      <div class="section">
         <table class="totals-table">
           ${rksvSection}
         </table>
-      </div>` : ''}
+      </div>
 
     </div><!-- /receipt-body -->
 
