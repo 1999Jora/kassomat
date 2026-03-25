@@ -200,6 +200,7 @@ export default function PaymentPanel() {
     clearCart,
     cardPaymentState,
     setCardPaymentState,
+    setMobileTab,
   } = useAppStore();
 
   const [cashInput, setCashInput] = useState('');
@@ -275,6 +276,7 @@ export default function PaymentPanel() {
       setDone(false);
       setProcessing(false);
       setCardPaymentState('idle', null);
+      setMobileTab('articles');
     }, 2000);
   }
 
@@ -454,6 +456,7 @@ export default function PaymentPanel() {
           setTip(0);
           setDone(false);
           setProcessing(false);
+          setMobileTab('articles');
         }, 2000);
       } catch {
         setProcessing(false);

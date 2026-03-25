@@ -37,7 +37,7 @@ function ProductGridSkeleton() {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ArticleGrid() {
-  const { activeCategory, setActiveCategory, addToCart, pluSearch, setPluSearch } = useAppStore();
+  const { activeCategory, setActiveCategory, addToCart, pluSearch, setPluSearch, setMobileTab } = useAppStore();
 
   // ── Data fetching ────────────────────────────────────────────────────────
   const {
@@ -190,6 +190,7 @@ export default function ArticleGrid() {
                         ? (parseInt((product.vatRate as string).replace('VAT_', ''), 10) as 0 | 10 | 13 | 20)
                         : product.vatRate,
                     });
+                    setMobileTab('cart');
                   }}
                   className="rounded-xl flex flex-col items-start justify-between p-3 text-left transition-all duration-100 hover:scale-[1.02] active:scale-[0.97] border min-h-[88px] group"
                   style={{

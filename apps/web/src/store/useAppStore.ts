@@ -43,6 +43,10 @@ interface AppState {
   pluSearch: string;
   setPluSearch: (s: string) => void;
 
+  // Mobile tab navigation
+  mobileTab: 'articles' | 'cart' | 'payment';
+  setMobileTab: (tab: 'articles' | 'cart' | 'payment') => void;
+
   // Order notification panel
   showOrderPanel: boolean;
   setShowOrderPanel: (show: boolean) => void;
@@ -101,6 +105,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   pluSearch: '',
   setPluSearch: (s) => set({ pluSearch: s }),
+
+  mobileTab: 'articles',
+  setMobileTab: (tab) => set({ mobileTab: tab }),
 
   showOrderPanel: false,
   setShowOrderPanel: (show) => set({ showOrderPanel: show }),

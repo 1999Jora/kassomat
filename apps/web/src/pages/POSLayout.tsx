@@ -9,9 +9,8 @@ import { useAppStore } from '../store/useAppStore';
 import { initAudio } from '../lib/sounds';
 
 export default function POSLayout() {
-  const { pendingOrders, cartItems } = useAppStore();
+  const { pendingOrders, cartItems, mobileTab, setMobileTab } = useAppStore();
   const [ordersOpen, setOrdersOpen] = useState(false);
-  const [mobileTab, setMobileTab] = useState<'articles' | 'cart' | 'payment'>('articles');
 
   // AudioContext erst nach erster User-Geste entsperren (Browser-Autoplay-Policy)
   useEffect(() => {
