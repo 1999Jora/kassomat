@@ -43,6 +43,11 @@ export default function DispatcherPage() {
   const driverMarkersRef = useRef<Record<string, maplibregl.Marker>>({});
   // Refs to the time-label DOM elements so we can update them without re-render
   const driverTimeLabelRefs = useRef<Record<string, HTMLElement>>({});
+  const geocodeCacheRef = useRef<Record<string, [number, number]>>({});
+  const lastGeocodeRef = useRef<number>(0);
+  // Always-current snapshot for callbacks (avoids stale closures in map event handlers)
+  const stateRef = useRef({ driverLocations, deliveries, drivers });
+  useEffect(() => { stateRef.current = { driverLocations, deliveries, drivers }; });
 
   // Load data
   useEffect(() => {
@@ -99,14 +104,13 @@ export default function DispatcherPage() {
     if (!map) return;
     const src = map.getSource('osm') as maplibregl.RasterTileSource | undefined;
     if (src) {
-      // MapLibre hat keine direkte setTiles API — Style neu setzen
       map.setStyle({
         version: 8,
-        sources: {
-          osm: { type: 'raster', tiles: getMapTiles(theme), tileSize: 256 },
-        },
+        sources: { osm: { type: 'raster', tiles: getMapTiles(theme), tileSize: 256 } },
         layers: [{ id: 'base', type: 'raster', source: 'osm' }],
       });
+      // setStyle wipes all sources/layers — re-draw route lines after reload
+      map.once('styledata', () => drawRouteLines(map));
     }
   }, [theme]);
 
@@ -170,6 +174,75 @@ export default function DispatcherPage() {
     }, 1000);
     return () => clearInterval(id);
   }, [driverLocations]);
+
+  // Geocode an address string (Nominatim, rate-limited, cached)
+  async function geocodeAddr(addr: string): Promise<[number, number] | null> {
+    if (geocodeCacheRef.current[addr]) return geocodeCacheRef.current[addr]!;
+    const wait = Math.max(0, 1100 - (Date.now() - lastGeocodeRef.current));
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    lastGeocodeRef.current = Date.now();
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addr)}&format=json&limit=1`, { headers: { 'User-Agent': 'Kassomat/1.0' } });
+      const data = await res.json();
+      if (data[0]) {
+        const coord: [number, number] = [parseFloat(data[0].lon), parseFloat(data[0].lat)];
+        geocodeCacheRef.current[addr] = coord;
+        return coord;
+      }
+    } catch {}
+    return null;
+  }
+
+  // Draw dashed route lines from each driver's GPS position to their delivery stops
+  function drawRouteLines(map: maplibregl.Map) {
+    if (!map.isStyleLoaded()) return;
+    const { driverLocations: locs, deliveries: dels, drivers: drvs } = stateRef.current;
+    Object.entries(locs).forEach(([driverId, loc]) => {
+      const driver = drvs.find(d => d.id === driverId);
+      if (!driver) return;
+      const driverDels = dels.filter(d => d.driverId === driverId && d.status !== 'delivered' && d.status !== 'cancelled');
+      const features = driverDels.flatMap(delivery => {
+        const order = delivery.order as any;
+        const addr = [order?.deliveryStreet ?? '', order?.deliveryCity ?? ''].filter(Boolean).join(', ');
+        if (!addr) return [];
+        const coord = geocodeCacheRef.current[addr];
+        if (!coord) return [];
+        return [{ type: 'Feature' as const, geometry: { type: 'LineString' as const, coordinates: [[loc.lng, loc.lat], coord] }, properties: {} }];
+      });
+      const sourceId = `route-${driverId}`;
+      const layerId = `route-line-${driverId}`;
+      const geojson = { type: 'FeatureCollection' as const, features: features as any[] };
+      if (map.getSource(sourceId)) {
+        (map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(geojson);
+      } else if (features.length > 0) {
+        map.addSource(sourceId, { type: 'geojson', data: geojson });
+        map.addLayer({ id: layerId, type: 'line', source: sourceId, paint: { 'line-color': driver.color, 'line-width': 2.5, 'line-opacity': 0.8, 'line-dasharray': [4, 3] } });
+      }
+    });
+  }
+
+  // Geocode delivery addresses + draw route lines whenever locations/deliveries change
+  useEffect(() => {
+    let cancelled = false;
+    async function update() {
+      const map = mapRef.current;
+      if (!map) return;
+      const addrs = new Set<string>();
+      deliveries.filter(d => d.status !== 'delivered' && d.status !== 'cancelled').forEach(delivery => {
+        const order = delivery.order as any;
+        const addr = [order?.deliveryStreet ?? '', order?.deliveryCity ?? ''].filter(Boolean).join(', ');
+        if (addr && !geocodeCacheRef.current[addr]) addrs.add(addr);
+      });
+      for (const addr of addrs) {
+        if (cancelled) return;
+        await geocodeAddr(addr);
+      }
+      if (cancelled || !mapRef.current?.isStyleLoaded()) return;
+      drawRouteLines(mapRef.current);
+    }
+    void update();
+    return () => { cancelled = true; };
+  }, [driverLocations, deliveries, drivers]);
 
   // Reassign delivery
   async function reassign(deliveryId: string, driverId: string) {
@@ -241,6 +314,7 @@ export default function DispatcherPage() {
           )}
           {filtered.map(delivery => {
             const order = delivery.order as any;
+            const assignedDriver = drivers.find(d => d.id === delivery.driverId);
             return (
               <div key={delivery.id} className="bg-[#0e1115] rounded-xl p-3 border border-white/5">
                 <div className="flex items-start justify-between mb-2">
@@ -248,26 +322,39 @@ export default function DispatcherPage() {
                     <p className="text-white font-medium text-sm truncate">{order?.customerName ?? 'Unbekannt'}</p>
                     <p className="text-white/50 text-xs truncate">{order?.deliveryStreet}, {order?.deliveryCity}</p>
                   </div>
-                  <span className="text-xs px-2 py-0.5 rounded-full ml-2 shrink-0"
-                    style={{ backgroundColor: STATUS_COLOR[delivery.status] + '33', color: STATUS_COLOR[delivery.status] }}>
-                    {STATUS_LABEL[delivery.status]}
-                  </span>
+                  <div className="flex items-center gap-1.5 ml-2 shrink-0">
+                    {/* Assigned driver badge */}
+                    {assignedDriver ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
+                        style={{ backgroundColor: assignedDriver.color + '22', color: assignedDriver.color, border: `1px solid ${assignedDriver.color}44` }}>
+                        <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: assignedDriver.color }} />
+                        {assignedDriver.name}
+                      </span>
+                    ) : (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-white/5 text-white/30 border border-white/[0.06]">Offen</span>
+                    )}
+                    <span className="text-xs px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: STATUS_COLOR[delivery.status] + '33', color: STATUS_COLOR[delivery.status] }}>
+                      {STATUS_LABEL[delivery.status]}
+                    </span>
+                  </div>
                 </div>
                 {/* Phone */}
                 {order?.customerPhone && (
                   <p className="text-white/40 text-xs mb-2">Tel: {order.customerPhone}</p>
                 )}
-                {/* Reassign */}
+                {/* Assign / Reassign — show all active drivers */}
                 {delivery.status !== 'delivered' && (
                   <div className="flex gap-2 mt-2 flex-wrap">
-                    {drivers.filter(d => d.isActive && d.id !== delivery.driverId).map(d => (
+                    {drivers.filter(d => d.isActive).map(d => (
                       <button
                         key={d.id}
                         onClick={() => reassign(delivery.id, d.id)}
                         className="text-xs px-2 py-1 rounded-lg"
-                        style={{ backgroundColor: d.color + '22', color: d.color, border: `1px solid ${d.color}44` }}
+                        style={{ backgroundColor: d.color + '22', color: d.color, border: `1px solid ${d.color}44`,
+                          opacity: d.id === delivery.driverId ? 0.4 : 1 }}
                       >
-                        → {d.name}
+                        {d.id === delivery.driverId ? '✓' : '→'} {d.name}
                       </button>
                     ))}
                   </div>

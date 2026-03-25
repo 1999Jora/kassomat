@@ -191,7 +191,7 @@ export default function DriverNavPage() {
       map.remove();
       mapRef.current = null;
     };
-  }, [activeDriver, is3D]);
+  }, [activeDriver]);
 
   // Calculate route when deliveries change and picked up
   useEffect(() => {
@@ -251,12 +251,13 @@ export default function DriverNavPage() {
     void calcRoute();
   }, [pickedUp, myDeliveries, position]);
 
-  // Confirm pickup
+  // Confirm pickup — mark ALL active deliveries as picked_up (driver collects all orders at once)
   async function handlePickup() {
     const activeDeliveries = myDeliveries.filter(d => d.status !== 'delivered' && d.status !== 'cancelled');
-    const currentDelivery = activeDeliveries[currentStopIdx];
-    if (!currentDelivery) return;
-    await fetch(`${API}/deliveries/${currentDelivery.id}/pickup`, { method: 'POST' });
+    if (activeDeliveries.length === 0) return;
+    await Promise.all(activeDeliveries.map(d =>
+      fetch(`${API}/deliveries/${d.id}/pickup`, { method: 'POST' })
+    ));
     setPickedUp(true);
   }
 
