@@ -752,9 +752,9 @@ export default function PaymentPanel() {
             </span>
           </div>
 
-          {/* Denomination buttons */}
-          <div className="grid grid-cols-5 gap-1.5 mb-2">
-            {DENOMINATIONS.map((amt) => {
+          {/* Denomination buttons — 3+2 grid layout */}
+          <div className="grid grid-cols-3 gap-1.5 mb-1.5">
+            {DENOMINATIONS.slice(0, 3).map((amt) => {
               const count = billCounts[amt] ?? 0;
               const isActive = count > 0;
               return (
@@ -763,16 +763,43 @@ export default function PaymentPanel() {
                   type="button"
                   onClick={() => {
                     setBillCounts((prev) => ({ ...prev, [amt]: (prev[amt] ?? 0) + 1 }));
-                    // Clear numpad if user switches to bills
                     if (cashInput) setCashInput('');
                   }}
-                  className={`relative min-h-[56px] rounded-xl text-sm font-bold transition-all duration-100 border active:scale-[0.97] ${
+                  className={`relative min-h-[52px] rounded-xl text-base font-bold transition-all duration-100 border active:scale-[0.97] ${
                     isActive
                       ? 'bg-[#00e87a]/15 text-[#00e87a] border-[#00e87a]/30'
                       : 'bg-white/[0.05] text-[#9ca3af] border-white/[0.06] hover:bg-white/10'
                   }`}
                 >
-                  {formatCents(amt)}
+                  {amt / 100}€
+                  {isActive && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-[#00e87a] text-black text-[10px] font-bold flex items-center justify-center">
+                      x{count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <div className="grid grid-cols-2 gap-1.5 mb-2">
+            {DENOMINATIONS.slice(3).map((amt) => {
+              const count = billCounts[amt] ?? 0;
+              const isActive = count > 0;
+              return (
+                <button
+                  key={amt}
+                  type="button"
+                  onClick={() => {
+                    setBillCounts((prev) => ({ ...prev, [amt]: (prev[amt] ?? 0) + 1 }));
+                    if (cashInput) setCashInput('');
+                  }}
+                  className={`relative min-h-[52px] rounded-xl text-base font-bold transition-all duration-100 border active:scale-[0.97] ${
+                    isActive
+                      ? 'bg-[#00e87a]/15 text-[#00e87a] border-[#00e87a]/30'
+                      : 'bg-white/[0.05] text-[#9ca3af] border-white/[0.06] hover:bg-white/10'
+                  }`}
+                >
+                  {amt / 100}€
                   {isActive && (
                     <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-[#00e87a] text-black text-[10px] font-bold flex items-center justify-center">
                       x{count}
