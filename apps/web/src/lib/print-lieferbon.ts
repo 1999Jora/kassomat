@@ -12,9 +12,30 @@ function getLieferbonConfig() {
   return null;
 }
 
+const W = 42; // 42 chars = 80mm thermal printer
+
+/** Center text within 42 chars */
+function center(text: string): string {
+  if (text.length >= W) return text.substring(0, W);
+  const pad = Math.floor((W - text.length) / 2);
+  return ' '.repeat(pad) + text;
+}
+
+/** Left-right justified within 42 chars */
+function leftRight(left: string, right: string): string {
+  const gap = W - left.length - right.length;
+  if (gap < 1) return (left + ' ' + right).substring(0, W);
+  return left + ' '.repeat(gap) + right;
+}
+
+/** Divider */
+function divider(char = '='): string {
+  return char.repeat(W);
+}
+
 /**
- * Lieferbon für POS-Lieferungen.
- * Kein RKSV QR-Code, kein Logo, "KEINE RECHNUNG" oben, mit Lieferadresse.
+ * Lieferbon — matches the thermal printer preview exactly.
+ * Monospace, 42 chars, black on white, no RKSV.
  */
 export async function printLieferbon(
   items: CartItem[],
@@ -26,116 +47,72 @@ export async function printLieferbon(
   const showTenant = (cfg?.showTenant as boolean) ?? true;
   const showAddr = (cfg?.showAddress as boolean) ?? true;
   const showPrices = (cfg?.showPrices as boolean) ?? true;
-  const W = 80;
-  const MARGIN = 5;
-  const PRINT_W = W - MARGIN * 2;
-  const COL_R = W - MARGIN;
 
-  // Dynamische Höhe berechnen
-  const lineCount = 20 + items.length * 2 + (delivery.name ? 5 : 0);
-  const H = Math.max(100, lineCount * 4.5 + 20);
-  const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'portrait' });
-  let y = 8;
+  // Build all lines first
+  const lines: Array<{ text: string; bold?: boolean; big?: boolean }> = [];
 
-  // Zeilenhöhe passend zur Schriftgröße
-  function lineH(size: number) {
-    return size * 0.45;
-  }
+  lines.push({ text: center('*** KEINE RECHNUNG ***'), bold: true });
+  lines.push({ text: center(title), bold: true, big: true });
+  if (showTenant) lines.push({ text: center(tenantName.toUpperCase()), bold: true });
+  lines.push({ text: divider('=') });
 
-  function ctr(text: string, size: number, bold = false) {
-    doc.setFont('courier', bold ? 'bold' : 'normal');
-    doc.setFontSize(size);
-    doc.text(text, W / 2, y, { align: 'center' });
-    y += lineH(size);
-  }
-
-  function row(left: string, right: string, size = 8, bold = false) {
-    doc.setFont('courier', bold ? 'bold' : 'normal');
-    doc.setFontSize(size);
-    doc.text(left, MARGIN, y);
-    doc.text(right, COL_R, y, { align: 'right' });
-    y += lineH(size);
-  }
-
-  function divider(dashed = false) {
-    doc.setFont('courier', 'normal');
-    doc.setFontSize(7);
-    const char = dashed ? '-' : '=';
-    const count = Math.floor(PRINT_W / doc.getTextWidth(char));
-    doc.text(char.repeat(count), MARGIN, y);
-    y += 3.5;
-  }
-
-  function txt(text: string, size = 8, bold = false, indent = 0) {
-    doc.setFont('courier', bold ? 'bold' : 'normal');
-    doc.setFontSize(size);
-    doc.text(text, MARGIN + indent, y);
-    y += lineH(size);
-  }
-
-  // ── Header ──
-  ctr('*** KEINE RECHNUNG ***', 10, true);
-  y += 1;
-  ctr(title, 12, true);
-  y += 1;
-  if (showTenant) ctr(tenantName.toUpperCase(), 8, true);
-  y += 2;
-  divider();
-
-  // Datum
   const dateStr = new Date().toLocaleString('de-AT', {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
-  txt(`Datum: ${dateStr}`, 7);
-  y += 1;
+  lines.push({ text: `Datum: ${dateStr}` });
+  lines.push({ text: '' });
 
-  // Lieferadresse
   if (showAddr && (delivery.name || delivery.street || delivery.city)) {
-    divider(true);
-    txt('LIEFERADRESSE:', 7, true);
-    if (delivery.name) txt(delivery.name, 9, true, 2);
-    if (delivery.street) txt(delivery.street, 8, false, 2);
-    if (delivery.city) txt(delivery.city, 8, false, 2);
-    y += 2;
+    lines.push({ text: divider('-') });
+    lines.push({ text: 'LIEFERADRESSE:', bold: true });
+    if (delivery.name) lines.push({ text: `  ${delivery.name}`, bold: true });
+    if (delivery.street) lines.push({ text: `  ${delivery.street}` });
+    if (delivery.city) lines.push({ text: `  ${delivery.city}` });
+    lines.push({ text: '' });
   }
 
-  // Artikel
-  divider();
+  lines.push({ text: divider('=') });
   for (const item of items) {
-    doc.setFont('courier', 'normal');
-    doc.setFontSize(8);
-    const prefix = `${item.quantity}x `;
+    const label = `${item.quantity}x ${item.name}`;
     if (showPrices) {
-      const priceStr = formatCents(item.price * item.quantity - item.discount);
-      const priceW = doc.getTextWidth(priceStr) + 2;
-      const nameMaxW = PRINT_W - priceW - 6;
-      const nameLines = doc.splitTextToSize(item.name, nameMaxW - doc.getTextWidth(prefix)) as string[];
-      doc.text(prefix + nameLines[0], MARGIN, y);
-      doc.text(priceStr, COL_R, y, { align: 'right' });
-      for (let li = 1; li < nameLines.length; li++) {
-        y += lineH(8);
-        doc.text('   ' + nameLines[li], MARGIN, y);
-      }
+      const price = formatCents(item.price * item.quantity - item.discount);
+      const trimmed = label.length > W - price.length - 1
+        ? label.substring(0, W - price.length - 2) + '.'
+        : label;
+      lines.push({ text: leftRight(trimmed, price) });
     } else {
-      const nameLines = doc.splitTextToSize(item.name, PRINT_W - doc.getTextWidth(prefix)) as string[];
-      doc.text(prefix + nameLines[0], MARGIN, y);
-      for (let li = 1; li < nameLines.length; li++) {
-        y += lineH(8);
-        doc.text('   ' + nameLines[li], MARGIN, y);
-      }
+      lines.push({ text: label.substring(0, W) });
     }
-    y += lineH(8) + 1;
   }
 
-  // Gesamt
-  divider();
   if (showPrices) {
+    lines.push({ text: divider('=') });
     const totalGross = items.reduce((s, i) => s + i.price * i.quantity - i.discount, 0);
-    row('GESAMT', formatCents(totalGross), 10, true);
-    y += 2;
-    divider();
+    lines.push({ text: leftRight('GESAMT', formatCents(totalGross)), bold: true });
   }
-  ctr('*** KEINE RECHNUNG ***', 8, true);
+  lines.push({ text: divider('=') });
+  lines.push({ text: center('*** KEINE RECHNUNG ***'), bold: true });
+
+  // Render to PDF — monospace, fixed size
+  const PAGE_W = 80; // mm
+  const MARGIN = 4;
+  const FONT_SIZE = 8;
+  const LINE_H = 3.6;
+  const BIG_SIZE = 10;
+  const BIG_LINE_H = 4.5;
+  const totalH = Math.max(80, lines.length * LINE_H + 20);
+
+  const doc = new jsPDF({ unit: 'mm', format: [PAGE_W, totalH], orientation: 'portrait' });
+  let y = 8;
+
+  for (const line of lines) {
+    const size = line.big ? BIG_SIZE : FONT_SIZE;
+    const lh = line.big ? BIG_LINE_H : LINE_H;
+    doc.setFont('courier', line.bold ? 'bold' : 'normal');
+    doc.setFontSize(size);
+    doc.text(line.text, MARGIN, y);
+    y += lh;
+  }
 
   doc.save(`Lieferbon_${Date.now()}.pdf`);
 }
