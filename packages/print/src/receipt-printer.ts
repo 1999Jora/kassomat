@@ -64,6 +64,28 @@ export function buildReceiptBuffer(receipt: ReceiptData, tenant: TenantInfo): Bu
   // --- Initialize ---
   b.init();
 
+  const isDemoSigning = receipt.rksvCertSerial === 'AT0-DEMO';
+  const isOfflinePending = receipt.receiptStatus === 'offline_pending';
+
+  // --- Demo banner (only for demo mode, NOT for SEE failure) ---
+  if (isDemoSigning && !isOfflinePending) {
+    b.align('center');
+    b.bold(true);
+    b.text('*** DEMO-SIGNATUR ***');
+    b.bold(false);
+    b.feed(1);
+  }
+
+  // --- Offline/SEE failure banner (only for real SEE that failed) ---
+  if (isOfflinePending && !isDemoSigning) {
+    b.align('center');
+    b.bold(true);
+    b.text('*** Sicherheitseinrichtung ***');
+    b.text('***     ausgefallen      ***');
+    b.bold(false);
+    b.feed(1);
+  }
+
   // --- Header: tenant name ---
   b.align('center');
   b.bold(true);

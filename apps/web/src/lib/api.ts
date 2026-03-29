@@ -129,8 +129,11 @@ export async function createReceipt(payload: CreateReceiptPayload): Promise<Rece
 export async function getReceipts(params?: {
   page?: number;
   pageSize?: number;
-  dateFrom?: string;
-  dateTo?: string;
+  from?: string;
+  to?: string;
+  status?: string;
+  search?: string;
+  paymentMethod?: string;
 }): Promise<PaginatedResponse<Receipt>> {
   const { data } = await api.get<ApiSuccess<PaginatedResponse<Receipt>>>('/receipts', { params });
   return data.data;
@@ -173,7 +176,7 @@ export async function waitForRksvSignature(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const receipt = await getReceiptById(receiptId);
-    if (receipt.status === 'signed' || receipt.status === 'printed' || receipt.status === 'cancelled') {
+    if (receipt.status === 'signed' || receipt.status === 'printed' || receipt.status === 'cancelled' || receipt.status === 'offline_pending') {
       return receipt;
     }
     await new Promise((r) => setTimeout(r, intervalMs));

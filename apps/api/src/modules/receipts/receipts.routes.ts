@@ -27,7 +27,9 @@ const listQuerySchema = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
   channel: z.enum(['direct', 'lieferando', 'wix']).optional(),
-  status: z.enum(['pending', 'signed', 'printed', 'cancelled']).optional(),
+  status: z.enum(['pending', 'signed', 'printed', 'cancelled', 'offline_pending']).optional(),
+  search: z.string().optional(),
+  paymentMethod: z.enum(['cash', 'card', 'online']).optional(),
 });
 
 // ============================================================
@@ -165,6 +167,7 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
       rksvBelegnummer: receipt.rksv.belegnummer || null,
       rksvRegistrierkasseId: receipt.rksv.registrierkasseId || null,
       rksvCertSerial: receipt.rksv.atCertificateSerial || null,
+      receiptStatus: receipt.status as ReceiptData['receiptStatus'],
     };
 
     const tenantInfo: TenantInfo = {
@@ -272,6 +275,7 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
       rksvBelegnummer: receipt.rksv_belegnummer ?? null,
       rksvRegistrierkasseId: receipt.rksv_registrierkasseId ?? null,
       rksvCertSerial: receipt.rksv_atCertificateSerial ?? null,
+      receiptStatus: receipt.status as ReceiptData['receiptStatus'],
     };
 
     const tenantInfo: TenantInfo = {

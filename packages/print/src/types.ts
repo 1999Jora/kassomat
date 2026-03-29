@@ -108,6 +108,8 @@ export interface ReceiptData {
   rksvRegistrierkasseId: string | null;
   /** Certificate serial — 'AT0-DEMO' when demo/HMAC signing is active */
   rksvCertSerial: string | null;
+  /** Receipt status — used to show offline/failure banners */
+  receiptStatus?: 'pending' | 'signed' | 'printed' | 'cancelled' | 'offline_pending';
   /** Receipt type identifier (e.g. 'cancellation', 'training') */
   receiptType?: string;
   /** Original receipt number for cancellation receipts (Storno) */

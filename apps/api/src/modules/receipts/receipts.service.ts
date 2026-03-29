@@ -244,6 +244,8 @@ export class ReceiptsService {
     to?: string;
     channel?: string;
     status?: string;
+    search?: string;
+    paymentMethod?: string;
   } = {}) {
     const page = filters.page ?? 1;
     const pageSize = Math.min(filters.pageSize ?? 20, 100);
@@ -252,11 +254,15 @@ export class ReceiptsService {
     const where: Record<string, unknown> = { tenantId };
     if (filters.channel) where['channel'] = filters.channel;
     if (filters.status) where['status'] = filters.status;
+    if (filters.paymentMethod) where['paymentMethod'] = filters.paymentMethod;
     if (filters.from || filters.to) {
       where['createdAt'] = {
         ...(filters.from && { gte: new Date(filters.from) }),
         ...(filters.to && { lte: new Date(`${filters.to}T23:59:59`) }),
       };
+    }
+    if (filters.search) {
+      where['receiptNumber'] = { contains: filters.search, mode: 'insensitive' };
     }
 
     const [items, total] = await prisma.$transaction([

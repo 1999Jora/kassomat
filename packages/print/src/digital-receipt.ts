@@ -80,6 +80,7 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
   const lines: Array<{ text: string; bold?: boolean }> = [];
 
   const isDemoSigning = receipt.rksvCertSerial === 'AT0-DEMO';
+  const isOfflinePending = receipt.receiptStatus === 'offline_pending';
 
   // Header
   lines.push({ text: center(tenant.name.toUpperCase()), bold: true });
@@ -172,9 +173,14 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
     ? `<div style="text-align:center;margin-bottom:8px;"><img src="${tenant.logoBase64}" alt="" style="max-height:60px;max-width:240px;" /></div>`
     : '';
 
-  // Demo banner
-  const demoBanner = isDemoSigning
+  // Demo banner (only for demo mode, NOT for SEE failure)
+  const demoBanner = isDemoSigning && !isOfflinePending
     ? `<div style="background:#000;color:#fff;text-align:center;padding:6px 0;font-family:'Courier New',Courier,monospace;font-size:12px;font-weight:700;letter-spacing:1px;">*** DEMO-SIGNATUR ***</div>`
+    : '';
+
+  // Offline/SEE failure banner (only for real SEE that failed, not for demo mode)
+  const offlineBanner = isOfflinePending && !isDemoSigning
+    ? `<div style="background:#c00;color:#fff;text-align:center;padding:6px 0;font-family:'Courier New',Courier,monospace;font-size:12px;font-weight:700;letter-spacing:1px;">*** Sicherheitseinrichtung ausgefallen ***</div>`
     : '';
 
   return `<!DOCTYPE html>
@@ -225,6 +231,7 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
 <body>
   <div class="receipt">
     ${demoBanner}
+    ${offlineBanner}
     ${logoHtml}
     ${linesHtml}
     ${qrHtml}
