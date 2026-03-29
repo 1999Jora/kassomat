@@ -15,7 +15,7 @@ const PAYMENT_METHODS = [
   { id: 'online', label: 'ONLINE', icon: '🌐' },
 ] as const;
 
-const QUICK_CASH = [500, 1000, 2000, 5000]; // cents
+const DENOMINATIONS = [500, 1000, 2000, 5000, 10000]; // cents
 
 const CARD_POLL_INTERVAL_MS = 3000;
 const CARD_TIMEOUT_MS = 120_000;
@@ -210,6 +210,8 @@ export default function PaymentPanel() {
   const queryClient = useQueryClient();
 
   const [cashInput, setCashInput] = useState('');
+  const [billCounts, setBillCounts] = useState<Record<number, number>>({});
+  const [showNumPad, setShowNumPad] = useState(false);
   const [tip, setTip] = useState(0);
   const [processing, setProcessing] = useState(false);
   const [done, setDone] = useState(false);
@@ -227,15 +229,19 @@ export default function PaymentPanel() {
 
   const totalGross = cartItems.reduce((s, i) => s + i.price * i.quantity - i.discount, 0);
   const totalWithTip = totalGross + tip;
-  const cashPaid = cashInput
+
+  // Cash paid: from bill accumulator OR manual numpad input
+  const billTotal = DENOMINATIONS.reduce((sum, d) => sum + d * (billCounts[d] ?? 0), 0);
+  const numpadAmount = cashInput
     ? Math.round(parseFloat(cashInput.replace(',', '.')) * 100)
     : 0;
+  const cashPaid = billTotal > 0 ? billTotal : numpadAmount;
   const cashChange =
     paymentMethod === 'cash' && cashPaid > 0
       ? Math.max(0, cashPaid - totalWithTip)
       : 0;
   const isUnderpaid =
-    paymentMethod === 'cash' && cashInput.length > 0 && cashPaid < totalWithTip;
+    paymentMethod === 'cash' && (cashInput.length > 0 || billTotal > 0) && cashPaid < totalWithTip;
 
   // ── Cleanup helpers ──────────────────────────────────────────────────────────
 
@@ -439,6 +445,8 @@ export default function PaymentPanel() {
     setTimeout(() => {
       clearCart();
       setCashInput('');
+      setBillCounts({});
+      setShowNumPad(false);
       setTip(0);
       setDone(false);
       setSigned(false);
@@ -633,42 +641,110 @@ export default function PaymentPanel() {
         )}
       </div>
 
-      {/* Cash numpad + quick amounts */}
+      {/* Cash denomination accumulator + numpad */}
       {paymentMethod === 'cash' && (
         <div className="px-3 py-2.5 border-b border-white/[0.06] shrink-0">
-          <p className="text-[10px] text-[#6b7280] uppercase tracking-wider mb-1.5">Erhaltener Betrag</p>
-
           {/* Display */}
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] text-[#6b7280] uppercase tracking-wider">Erhaltener Betrag</p>
+            {(billTotal > 0 || cashInput.length > 0) && (
+              <button
+                type="button"
+                onClick={() => { setBillCounts({}); setCashInput(''); setShowNumPad(false); }}
+                className="text-[10px] text-[#6b7280] hover:text-red-400 transition-colors"
+              >
+                Zurücksetzen
+              </button>
+            )}
+          </div>
+
           <div
-            className={`bg-white/[0.04] border rounded-xl px-3 py-2 mb-2 flex items-center justify-between transition-colors ${
+            className={`bg-white/[0.04] border rounded-xl px-3 py-2 mb-2.5 flex items-center justify-between transition-colors ${
               isUnderpaid ? 'border-red-500/40' : 'border-white/[0.08]'
             }`}
           >
             <span className="text-[10px] text-[#6b7280]">Eingabe</span>
             <span className="text-lg font-mono font-medium text-white">
-              {cashInput ? cashInput.replace('.', ',') : '0,00'} €
+              {cashPaid > 0 ? formatCents(cashPaid) : '0,00 €'}
             </span>
           </div>
 
-          {/* Quick cash buttons */}
-          <div className="grid grid-cols-4 gap-1 mb-2">
-            {QUICK_CASH.map((amt) => (
-              <button
-                key={amt}
-                type="button"
-                onClick={() => setCashInput((amt / 100).toFixed(2).replace('.', ','))}
-                className={`py-1.5 rounded-lg text-[10px] font-medium transition-colors border ${
-                  cashPaid === amt
-                    ? 'bg-[#00e87a]/15 text-[#00e87a] border-[#00e87a]/30'
-                    : 'bg-white/[0.05] text-[#9ca3af] border-white/[0.06] hover:bg-white/10'
-                }`}
-              >
-                {formatCents(amt)}
-              </button>
-            ))}
+          {/* Denomination buttons */}
+          <div className="grid grid-cols-5 gap-1.5 mb-2">
+            {DENOMINATIONS.map((amt) => {
+              const count = billCounts[amt] ?? 0;
+              const isActive = count > 0;
+              return (
+                <button
+                  key={amt}
+                  type="button"
+                  onClick={() => {
+                    setBillCounts((prev) => ({ ...prev, [amt]: (prev[amt] ?? 0) + 1 }));
+                    // Clear numpad if user switches to bills
+                    if (cashInput) setCashInput('');
+                  }}
+                  className={`relative min-h-[56px] rounded-xl text-sm font-bold transition-all duration-100 border active:scale-[0.97] ${
+                    isActive
+                      ? 'bg-[#00e87a]/15 text-[#00e87a] border-[#00e87a]/30'
+                      : 'bg-white/[0.05] text-[#9ca3af] border-white/[0.06] hover:bg-white/10'
+                  }`}
+                >
+                  {formatCents(amt)}
+                  {isActive && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-[#00e87a] text-black text-[10px] font-bold flex items-center justify-center">
+                      x{count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
-          <NumPad value={cashInput} onChange={setCashInput} maxLength={8} />
+          {/* Passend button */}
+          <button
+            type="button"
+            onClick={() => {
+              if (totalWithTip > 0) {
+                setBillCounts({});
+                setCashInput((totalWithTip / 100).toFixed(2).replace('.', ','));
+              }
+            }}
+            disabled={totalWithTip === 0}
+            className="w-full min-h-[40px] rounded-lg text-xs font-medium transition-all border bg-white/[0.04] text-[#9ca3af] border-white/[0.06] hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed mb-2"
+          >
+            Passend ({formatCents(totalWithTip)})
+          </button>
+
+          {/* NumPad toggle */}
+          <button
+            type="button"
+            onClick={() => setShowNumPad(!showNumPad)}
+            className="text-[10px] text-[#6b7280] hover:text-white transition-colors mb-1.5 flex items-center gap-1"
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="4" y="4" width="4" height="4" />
+              <rect x="10" y="4" width="4" height="4" />
+              <rect x="16" y="4" width="4" height="4" />
+              <rect x="4" y="10" width="4" height="4" />
+              <rect x="10" y="10" width="4" height="4" />
+              <rect x="16" y="10" width="4" height="4" />
+            </svg>
+            {showNumPad ? 'Tastatur ausblenden' : 'Betrag eingeben'}
+          </button>
+
+          {showNumPad && (
+            <div className="mb-1">
+              <NumPad
+                value={cashInput}
+                onChange={(v) => {
+                  setCashInput(v);
+                  // Clear bills if user switches to numpad
+                  if (billTotal > 0) setBillCounts({});
+                }}
+                maxLength={8}
+              />
+            </div>
+          )}
 
           {/* Change display */}
           {cashPaid > 0 && (
@@ -717,7 +793,7 @@ export default function PaymentPanel() {
               type="button"
               onClick={() => addTip(pct)}
               disabled={cartItems.length === 0}
-              className={`flex-1 min-h-[36px] rounded-lg text-[10px] font-medium transition-all border ${
+              className={`flex-1 min-h-[48px] rounded-lg text-[10px] font-medium transition-all border ${
                 tip === Math.round(totalGross * pct / 100) && tip > 0
                   ? 'bg-[#00e87a]/10 text-[#00e87a] border-[#00e87a]/25'
                   : 'bg-white/[0.04] text-[#9ca3af] border-white/[0.06] hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed'

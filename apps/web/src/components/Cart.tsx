@@ -1,3 +1,4 @@
+import { useState, useRef, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { formatCents } from '../lib/formatters';
 
@@ -9,6 +10,19 @@ const CHANNEL_CONFIG: Record<string, { label: string; cls: string }> = {
 
 export default function Cart() {
   const { cartItems, cartChannel, updateQuantity, removeFromCart, clearCart, orderType, setOrderType, deliveryInfo, setDeliveryInfo } = useAppStore();
+  const [confirmClear, setConfirmClear] = useState(false);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleClearClick = useCallback(() => {
+    if (!confirmClear) {
+      setConfirmClear(true);
+      confirmTimerRef.current = setTimeout(() => setConfirmClear(false), 3000);
+    } else {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      setConfirmClear(false);
+      clearCart();
+    }
+  }, [confirmClear, clearCart]);
 
   const totals = cartItems.reduce(
     (acc, item) => {
@@ -61,14 +75,18 @@ export default function Cart() {
         {cartItems.length > 0 && (
           <button
             type="button"
-            onClick={clearCart}
-            className="text-[10px] text-[#6b7280] hover:text-red-400 transition-colors flex items-center gap-1"
+            onClick={handleClearClick}
+            className={`text-[10px] transition-colors flex items-center gap-1 ${
+              confirmClear
+                ? 'text-red-400 bg-red-900/30 px-2 py-1 rounded-lg font-semibold'
+                : 'text-[#6b7280] hover:text-red-400'
+            }`}
           >
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <polyline points="3 6 5 6 21 6" />
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
             </svg>
-            Leeren
+            {confirmClear ? 'Wirklich leeren?' : 'Leeren'}
           </button>
         )}
       </div>
@@ -106,21 +124,21 @@ export default function Cart() {
               placeholder="Name"
               value={deliveryInfo.name}
               onChange={(e) => setDeliveryInfo({ name: e.target.value })}
-              className="w-full bg-white/[0.05] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-[#6b7280] outline-none focus:border-[#00e87a]/40 transition-colors"
+              className="w-full bg-white/[0.05] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white placeholder-[#6b7280] outline-none focus:border-[#00e87a]/40 transition-colors"
             />
             <input
               type="text"
               placeholder="Strasse + Nr."
               value={deliveryInfo.street}
               onChange={(e) => setDeliveryInfo({ street: e.target.value })}
-              className="w-full bg-white/[0.05] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-[#6b7280] outline-none focus:border-[#00e87a]/40 transition-colors"
+              className="w-full bg-white/[0.05] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white placeholder-[#6b7280] outline-none focus:border-[#00e87a]/40 transition-colors"
             />
             <input
               type="text"
               placeholder="PLZ + Ort"
               value={deliveryInfo.city}
               onChange={(e) => setDeliveryInfo({ city: e.target.value })}
-              className="w-full bg-white/[0.05] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-[#6b7280] outline-none focus:border-[#00e87a]/40 transition-colors"
+              className="w-full bg-white/[0.05] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white placeholder-[#6b7280] outline-none focus:border-[#00e87a]/40 transition-colors"
             />
           </div>
         )}
@@ -168,7 +186,7 @@ export default function Cart() {
                   <button
                     type="button"
                     onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                    className="min-w-[28px] min-h-[28px] flex items-center justify-center text-sm text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                    className="min-w-[40px] min-h-[40px] flex items-center justify-center text-sm text-white/60 hover:text-white hover:bg-white/10 transition-colors"
                   >
                     −
                   </button>
@@ -178,7 +196,7 @@ export default function Cart() {
                   <button
                     type="button"
                     onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                    className="min-w-[28px] min-h-[28px] flex items-center justify-center text-sm text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                    className="min-w-[40px] min-h-[40px] flex items-center justify-center text-sm text-white/60 hover:text-white hover:bg-white/10 transition-colors"
                   >
                     +
                   </button>
@@ -195,7 +213,7 @@ export default function Cart() {
                 <button
                   type="button"
                   onClick={() => removeFromCart(item.productId)}
-                  className="min-w-[24px] min-h-[24px] w-6 h-6 rounded flex items-center justify-center text-white/15 hover:text-red-400 hover:bg-red-900/20 transition-all shrink-0 opacity-0 group-hover:opacity-100"
+                  className="min-w-[24px] min-h-[24px] w-6 h-6 rounded flex items-center justify-center text-white/15 hover:text-red-400 hover:bg-red-900/20 transition-all shrink-0 opacity-60 hover:opacity-100"
                 >
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <line x1="18" y1="6" x2="6" y2="18" />

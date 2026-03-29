@@ -5,6 +5,7 @@ import type { IncomingOrder } from '@kassomat/types';
 import { jsPDF } from 'jspdf';
 import { playSuccess } from '../lib/sounds';
 import { waitForRksvSignature, printReceiptById, getDigitalReceiptUrl, getPrintMode } from '../lib/api';
+import toast from 'react-hot-toast';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -305,7 +306,7 @@ export default function OrderNotification({ onClose }: Props) {
       removePendingOrder(order.id);
     } catch (err) {
       console.error('Order receipt failed:', err);
-      alert('Bon konnte nicht erstellt werden. Bitte erneut versuchen.');
+      toast.error('Bon konnte nicht erstellt werden. Bitte erneut versuchen.');
     } finally {
       setPrinting(null);
     }
@@ -441,7 +442,7 @@ export default function OrderNotification({ onClose }: Props) {
                       <button
                         type="button"
                         onClick={() => rejectOrder(order.id)}
-                        className="flex-none min-h-[38px] px-3 rounded-lg bg-white/[0.04] hover:bg-red-900/20 hover:text-red-400 text-white/40 text-xs font-medium transition-colors border border-white/[0.06] hover:border-red-900/30"
+                        className="flex-none min-h-[48px] px-3 rounded-lg bg-white/[0.04] hover:bg-red-900/20 hover:text-red-400 text-white/40 text-xs font-medium transition-colors border border-white/[0.06] hover:border-red-900/30"
                       >
                         Ablehnen
                       </button>
@@ -449,7 +450,7 @@ export default function OrderNotification({ onClose }: Props) {
                         type="button"
                         onClick={() => handlePrintBon(order)}
                         disabled={printing === order.id}
-                        className="flex-1 min-h-[38px] rounded-lg bg-[#00e87a] hover:bg-[#00d470] active:scale-[0.99] text-black text-xs font-bold transition-all shadow-md shadow-[#00e87a]/15 disabled:opacity-60 disabled:cursor-wait flex items-center justify-center gap-1.5"
+                        className="flex-1 min-h-[48px] rounded-lg bg-[#00e87a] hover:bg-[#00d470] active:scale-[0.99] text-black text-xs font-bold transition-all shadow-md shadow-[#00e87a]/15 disabled:opacity-60 disabled:cursor-wait flex items-center justify-center gap-1.5"
                       >
                         {printing === order.id ? (
                           <>
