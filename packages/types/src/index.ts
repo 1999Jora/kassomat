@@ -60,6 +60,8 @@ export interface TenantSettings {
   wix: WixConfig | null;
   /** myPOS Kartenzahlungs-Terminal Konfiguration */
   mypos: MyPOSConfig | null;
+  /** fiskaltrust RKSV Signatur-Service Konfiguration (Demo/Sandbox) */
+  fiskaltrust: FiskaltrustConfig | null;
 }
 
 // ============================================================
@@ -453,6 +455,14 @@ export interface MyPOSConfig {
   configured: boolean;
   apiKeyHint: string | null;
   terminalSerial: string | null;
+}
+
+/** fiskaltrust RKSV Signatur-Service Konfiguration */
+export interface FiskaltrustConfig {
+  cashboxId: string;
+  configured: boolean;
+  accessTokenHint: string | null;
+  environment: 'sandbox' | 'production';
 }
 
 // ============================================================

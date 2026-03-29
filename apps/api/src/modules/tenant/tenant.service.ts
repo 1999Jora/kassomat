@@ -51,6 +51,11 @@ export interface UpdateTenantInput {
     secretKey?: string;
     terminalSerial?: string | null;
   } | null;
+  fiskaltrust?: {
+    cashboxId: string;
+    accessToken?: string;
+    environment: 'sandbox' | 'production';
+  } | null;
 }
 
 export class TenantService {
@@ -192,6 +197,21 @@ export class TenantService {
       }
     }
 
+    if (input.fiskaltrust !== undefined) {
+      if (input.fiskaltrust === null) {
+        updateData['fiskaltrustCashboxId'] = null;
+        updateData['fiskaltrustAccessToken_encrypted'] = null;
+        updateData['fiskaltrustAccessTokenHint'] = null;
+      } else {
+        updateData['fiskaltrustCashboxId'] = input.fiskaltrust.cashboxId;
+        if (input.fiskaltrust.accessToken) {
+          updateData['fiskaltrustAccessToken_encrypted'] = encrypt(input.fiskaltrust.accessToken);
+          updateData['fiskaltrustAccessTokenHint'] = keyHint(input.fiskaltrust.accessToken);
+        }
+        updateData['fiskaltrustEnvironment'] = input.fiskaltrust.environment;
+      }
+    }
+
     const updated = await prisma.tenant.update({
       where: { id: tenantId },
       data: updateData,
@@ -251,6 +271,14 @@ export class TenantService {
               configured: !!(tenant.myposApiKey_encrypted && tenant.myposSecretKey_encrypted),
               apiKeyHint: tenant.myposApiKeyHint ?? null,
               terminalSerial: tenant.myposTerminalSerial ?? null,
+            }
+          : null,
+        fiskaltrust: tenant.fiskaltrustCashboxId
+          ? {
+              cashboxId: tenant.fiskaltrustCashboxId,
+              configured: !!tenant.fiskaltrustAccessToken_encrypted,
+              accessTokenHint: tenant.fiskaltrustAccessTokenHint ?? null,
+              environment: (tenant.fiskaltrustEnvironment ?? 'sandbox') as 'sandbox' | 'production',
             }
           : null,
       },

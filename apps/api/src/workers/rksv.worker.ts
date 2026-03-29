@@ -18,6 +18,8 @@ import { randomBytes, createHash } from 'crypto';
 import {
   ATrustClient,
   ATrustError,
+  FiskaltrustClient,
+  FiskaltrustError,
   calculateReceiptHash,
   calculateInitialHash,
   buildQRCodeData,
@@ -193,13 +195,16 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
       atrustApiKey_encrypted: true,
       atrustEnvironment: true,
       rksvEnabled: true,
+      fiskaltrustCashboxId: true,
+      fiskaltrustAccessToken_encrypted: true,
+      fiskaltrustEnvironment: true,
     },
   });
 
   if (!tenant) throw new Error(`Tenant ${tenantId} nicht gefunden`);
 
-  // RKSV deaktiviert oder A-Trust nicht konfiguriert
-  if (!tenant.rksvEnabled || !tenant.atrustCertificateSerial || !tenant.atrustApiKey_encrypted) {
+  // RKSV deaktiviert?
+  if (!tenant.rksvEnabled) {
     await prisma.receipt.update({
       where: { id: receiptId },
       data: { status: 'signed', rksv_signedAt: new Date() },
@@ -207,12 +212,45 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
     return;
   }
 
-  const apiKey = decrypt(tenant.atrustApiKey_encrypted);
-  const atrustClient = new ATrustClient({
-    certificateSerial: tenant.atrustCertificateSerial,
-    apiKey,
-    environment: tenant.atrustEnvironment === 'production' ? 'production' : 'test',
-  });
+  // Signing-Client wählen: A-Trust > fiskaltrust > demo (kein Signing)
+  const hasAtrust = !!(tenant.atrustCertificateSerial && tenant.atrustApiKey_encrypted);
+  const hasFiskaltrust = !!(tenant.fiskaltrustCashboxId && tenant.fiskaltrustAccessToken_encrypted);
+
+  if (!hasAtrust && !hasFiskaltrust) {
+    // Demo-Modus: kein Signing-Anbieter konfiguriert
+    await prisma.receipt.update({
+      where: { id: receiptId },
+      data: { status: 'signed', rksv_signedAt: new Date() },
+    });
+    return;
+  }
+
+  // Signing-Client instanziieren
+  let signerType: 'atrust' | 'fiskaltrust';
+  let signFn: (data: string) => Promise<string>;
+  let certSerial: string;
+
+  if (hasAtrust) {
+    const apiKey = decrypt(tenant.atrustApiKey_encrypted!);
+    const atrustClient = new ATrustClient({
+      certificateSerial: tenant.atrustCertificateSerial!,
+      apiKey,
+      environment: tenant.atrustEnvironment === 'production' ? 'production' : 'test',
+    });
+    signerType = 'atrust';
+    signFn = (d) => atrustClient.signReceipt(d);
+    certSerial = tenant.atrustCertificateSerial!;
+  } else {
+    const accessToken = decrypt(tenant.fiskaltrustAccessToken_encrypted!);
+    const ftClient = new FiskaltrustClient({
+      cashboxId: tenant.fiskaltrustCashboxId!,
+      accessToken,
+      environment: tenant.fiskaltrustEnvironment === 'production' ? 'production' : 'sandbox',
+    });
+    signerType = 'fiskaltrust';
+    signFn = (d) => ftClient.signReceipt(d);
+    certSerial = tenant.fiskaltrustCashboxId!;
+  }
 
   // 3. Vorherigen Hash und Signatur ermitteln
   const previousHash = await getPreviousReceiptHash(tenantId, receiptId);
@@ -229,13 +267,13 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
     previousHash,
   ].join('|');
 
-  // 6. A-Trust Signatur holen (mit Retry-Logik in ATrustClient)
+  // 6. Signatur holen (A-Trust oder fiskaltrust)
   let signature: string;
   try {
-    signature = await atrustClient.signReceipt(signData);
+    signature = await signFn(signData);
   } catch (err) {
-    if (err instanceof ATrustError) {
-      console.error(`[RKSV Worker] A-Trust Signatur fehlgeschlagen für ${receiptId}:`, err.message);
+    if (err instanceof ATrustError || err instanceof FiskaltrustError) {
+      console.error(`[RKSV Worker] ${signerType} Signatur fehlgeschlagen für ${receiptId}:`, (err as Error).message);
     } else {
       console.error(`[RKSV Worker] Unbekannter Fehler bei Signatur für ${receiptId}:`, err);
     }
@@ -300,7 +338,7 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
     signature,
     qrCodeData: '',
     signedAt: new Date(),
-    atCertificateSerial: tenant.atrustCertificateSerial,
+    atCertificateSerial: certSerial,
   };
 
   const fullReceipt: Receipt = {
@@ -350,7 +388,7 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
       rksv_signature: signature,
       rksv_qrCodeData: qrCodeData,
       rksv_signedAt: new Date(),
-      rksv_atCertificateSerial: tenant.atrustCertificateSerial,
+      rksv_atCertificateSerial: certSerial,
     },
   });
 
@@ -376,7 +414,7 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
         Umsatz_Besonders: 0,
         Umsatz_Null: receipt.vat0 / 100,
         Verschluesselter_Umsatzzaehler: umsatzzaehlerEncrypted,
-        Zertifikatsseriennummer: tenant.atrustCertificateSerial,
+        Zertifikatsseriennummer: certSerial,
         Sig_Voriger_Beleg: sigVorigerBeleg,
         Signaturwert: signature,
         QR_Code: qrCodeData,
@@ -396,7 +434,7 @@ async function handleSignReceipt(job: Job<SignReceiptJobData>): Promise<void> {
         Umsatz_Besonders: 0,
         Umsatz_Null: receipt.vat0 / 100,
         Verschluesselter_Umsatzzaehler: umsatzzaehlerEncrypted,
-        Zertifikatsseriennummer: tenant.atrustCertificateSerial,
+        Zertifikatsseriennummer: certSerial,
         Sig_Voriger_Beleg: sigVorigerBeleg,
         Signaturwert: signature,
         QR_Code: qrCodeData,

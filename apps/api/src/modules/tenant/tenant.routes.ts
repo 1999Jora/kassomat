@@ -46,6 +46,11 @@ const updateSchema = z.object({
     secretKey: z.string().optional(),
     terminalSerial: z.string().nullable().optional(),
   }).nullable().optional(),
+  fiskaltrust: z.object({
+    cashboxId: z.string().min(1),
+    accessToken: z.string().optional(),
+    environment: z.enum(['sandbox', 'production']).default('sandbox'),
+  }).nullable().optional(),
 });
 
 export async function tenantRoutes(fastify: FastifyInstance): Promise<void> {

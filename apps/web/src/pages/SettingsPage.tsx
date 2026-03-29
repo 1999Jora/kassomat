@@ -94,11 +94,12 @@ function Toggle({
 
 // ─── Tab types ────────────────────────────────────────────────────────────────
 
-type Tab = 'general' | 'atrust' | 'lieferando' | 'wix' | 'mypos' | 'printer' | 'categories' | 'articles';
+type Tab = 'general' | 'atrust' | 'fiskaltrust' | 'lieferando' | 'wix' | 'mypos' | 'printer' | 'categories' | 'articles';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'general', label: 'Allgemein' },
   { id: 'atrust', label: 'A-Trust' },
+  { id: 'fiskaltrust', label: 'fiskaltrust' },
   { id: 'lieferando', label: 'Lieferando' },
   { id: 'wix', label: 'Wix' },
   { id: 'mypos', label: 'myPOS' },
@@ -362,6 +363,124 @@ function ATrustTab({ settings }: { settings: TenantSettings }) {
           </button>
         </div>
       </form>
+
+      <div className="border-t border-white/[0.06] pt-5">
+        <RksvSonderbelegeSection />
+      </div>
+    </div>
+  );
+}
+
+// ─── fiskaltrust tab ──────────────────────────────────────────────────────────
+
+function FiskaltrustTab({ settings }: { settings: TenantSettings }) {
+  const qc = useQueryClient();
+  const ft = settings.fiskaltrust;
+
+  const [cashboxId, setCashboxId] = useState(ft?.cashboxId ?? '');
+  const [accessToken, setAccessToken] = useState('');
+  const [environment, setEnvironment] = useState<'sandbox' | 'production'>(ft?.environment ?? 'sandbox');
+
+  const mutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.patch('/tenant', body),
+    onSuccess: () => {
+      toast.success('fiskaltrust Einstellungen gespeichert');
+      void qc.invalidateQueries({ queryKey: ['tenant'] });
+    },
+    onError: () => toast.error('Fehler beim Speichern'),
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!cashboxId.trim()) {
+      toast.error('Bitte CashBox ID eingeben');
+      return;
+    }
+    mutation.mutate({
+      fiskaltrust: {
+        cashboxId,
+        ...(accessToken ? { accessToken } : {}),
+        environment,
+      },
+    });
+  }
+
+  function handleDisconnect() {
+    mutation.mutate({ fiskaltrust: null });
+    setCashboxId('');
+    setAccessToken('');
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-[#080a0c] border border-white/5 rounded-xl p-4 text-sm text-white/50 space-y-2">
+        <p className="font-medium text-white/70">Was ist fiskaltrust?</p>
+        <p>
+          fiskaltrust bietet einen kostenlosen RKSV-Signatur-Sandbox-Dienst für Demo- und
+          Testzwecke. Ideal für die Entwicklung ohne A-Trust Vertrag.
+        </p>
+        <p>
+          Registrierung:{' '}
+          <span className="text-white/60 font-mono text-xs">portal-sandbox.fiskaltrust.at</span>
+          {' '}→ CashBox anlegen → CashBox ID + Access Token kopieren.
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <Field label="CashBox ID" hint="Aus dem fiskaltrust Portal (Sandbox oder Produktion)">
+          <Input
+            value={cashboxId}
+            onChange={(e) => setCashboxId(e.target.value)}
+            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            autoComplete="off"
+          />
+        </Field>
+
+        <Field label="Access Token" hint="Aus dem fiskaltrust Portal — leer lassen um bestehenden zu behalten">
+          <Input
+            type="password"
+            value={accessToken}
+            onChange={(e) => setAccessToken(e.target.value)}
+            placeholder="••••••••••••••••"
+            autoComplete="off"
+          />
+          {ft?.accessTokenHint && !accessToken && (
+            <p className="mt-1 text-xs text-[#00e87a]/70">Token hinterlegt: {ft.accessTokenHint}</p>
+          )}
+        </Field>
+
+        <Field label="Umgebung">
+          <Toggle
+            checked={environment === 'production'}
+            onChange={(v) => setEnvironment(v ? 'production' : 'sandbox')}
+            labelOn="Produktion"
+            labelOff="Sandbox (Demo)"
+          />
+        </Field>
+
+        <div className="pt-2 flex gap-3">
+          <SaveButton loading={mutation.isPending} />
+          {ft && (
+            <button
+              type="button"
+              onClick={handleDisconnect}
+              disabled={mutation.isPending}
+              className="border border-red-500/30 text-red-400 font-medium px-6 py-2.5 rounded-lg text-sm hover:bg-red-500/10 transition-colors disabled:opacity-50"
+            >
+              Trennen
+            </button>
+          )}
+        </div>
+      </form>
+
+      {ft?.configured && (
+        <div className="bg-[#00e87a]/5 border border-[#00e87a]/20 rounded-xl p-4 text-sm">
+          <p className="text-[#00e87a] font-medium mb-1">fiskaltrust aktiv</p>
+          <p className="text-white/50">
+            Bons werden über fiskaltrust ({environment}) signiert. A-Trust hat Vorrang falls konfiguriert.
+          </p>
+        </div>
+      )}
 
       <div className="border-t border-white/[0.06] pt-5">
         <RksvSonderbelegeSection />
@@ -1351,6 +1470,7 @@ export default function SettingsPage() {
       <div className="bg-[#0e1115] border border-white/5 rounded-xl p-6">
         {activeTab === 'general' && <GeneralTab tenant={tenant} />}
         {activeTab === 'atrust' && <ATrustTab settings={tenant.settings} />}
+        {activeTab === 'fiskaltrust' && <FiskaltrustTab settings={tenant.settings} />}
         {activeTab === 'lieferando' && <LieferandoTab settings={tenant.settings} />}
         {activeTab === 'wix' && <WixTab settings={tenant.settings} />}
         {activeTab === 'mypos' && <MyPOSTab settings={tenant.settings} />}

@@ -6,6 +6,7 @@
 
 export * from './chain';
 export * from './atrust';
+export * from './fiskaltrust';
 export * from './qrcode';
 export * from './dep';
 export * from './special-receipts';
