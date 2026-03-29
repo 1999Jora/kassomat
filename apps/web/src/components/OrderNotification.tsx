@@ -4,6 +4,7 @@ import { formatCents, formatRelative } from '../lib/formatters';
 import type { IncomingOrder } from '@kassomat/types';
 import { jsPDF } from 'jspdf';
 import { playSuccess } from '../lib/sounds';
+import { waitForRksvSignature, printReceiptById, getDigitalReceiptUrl, getPrintMode } from '../lib/api';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -279,17 +280,37 @@ export default function OrderNotification({ onClose }: Props) {
       const apiUrl = import.meta.env['VITE_API_URL'] ?? '';
       const paymentMethod = order.paymentMethod === 'online_paid' ? 'online' : 'cash';
 
-      await fetch(`${apiUrl}/orders/${order.id}/receipt`, {
+      // Gleicher Flow wie POS: Print-Mode lesen + PDF-Fenster VOR await öffnen
+      const mode = getPrintMode();
+      let pdfWindow: Window | null = null;
+      if (mode === 'pdf') {
+        pdfWindow = window.open('about:blank', '_blank', 'noopener');
+      }
+
+      const res = await fetch(`${apiUrl}/orders/${order.id}/receipt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ payment: { method: paymentMethod, amountPaid: order.totalAmount, tip: 0 } }),
       });
 
-      await printThermalReceipt(order);
+      if (!res.ok) throw new Error(`Receipt creation failed: ${res.status}`);
+      const body = await res.json();
+      const receiptId: string = body.data.id;
+
+      // Auf RKSV-Signierung warten, dann über Server drucken
+      await waitForRksvSignature(receiptId);
+
+      if (mode === 'printer') {
+        await printReceiptById(receiptId);
+      } else if (mode === 'pdf' && pdfWindow) {
+        pdfWindow.location.href = getDigitalReceiptUrl(receiptId);
+      }
+
       playSuccess();
-      // Bestellung nach Bon-Druck aus der Liste entfernen
       removePendingOrder(order.id);
-    } catch {
+    } catch (err) {
+      console.error('Order receipt failed, falling back to local PDF:', err);
+      // Fallback: lokaler jsPDF-Bon falls Server-Flow fehlschlägt
       await printThermalReceipt(order);
       removePendingOrder(order.id);
     } finally {
