@@ -77,12 +77,12 @@ function divider(char = '-'): string {
 // ============================================================
 
 export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: TenantInfo): Promise<string> {
-  const lines: Array<{ text: string; bold?: boolean; big?: boolean }> = [];
+  const lines: Array<{ text: string; bold?: boolean }> = [];
 
   const isDemoSigning = receipt.rksvCertSerial === 'AT0-DEMO';
 
   // Header
-  lines.push({ text: center(tenant.name.toUpperCase()), bold: true, big: true });
+  lines.push({ text: center(tenant.name.toUpperCase()), bold: true });
   if (tenant.address) lines.push({ text: center(tenant.address) });
   if (tenant.city) lines.push({ text: center(tenant.city) });
   if (tenant.vatNumber) lines.push({ text: center(`UID: ${tenant.vatNumber}`) });
@@ -118,7 +118,7 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
   if (receipt.totals.vat13 > 0) lines.push({ text: leftRight('MwSt 13%:', fmtEuro(receipt.totals.vat13)) });
   if (receipt.totals.vat20 > 0) lines.push({ text: leftRight('MwSt 20%:', fmtEuro(receipt.totals.vat20)) });
   lines.push({ text: divider('=') });
-  lines.push({ text: leftRight('GESAMT:', fmtEuro(receipt.totals.totalGross)), bold: true, big: true });
+  lines.push({ text: leftRight('GESAMT:', fmtEuro(receipt.totals.totalGross)), bold: true });
   lines.push({ text: divider() });
 
   // Payment
@@ -134,7 +134,6 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
   // Build the lines HTML
   const linesHtml = lines.map(l => {
     const t = esc(l.text);
-    if (l.bold && l.big) return `<div class="line bold big">${t}</div>`;
     if (l.bold) return `<div class="line bold">${t}</div>`;
     return `<div class="line">${t}</div>`;
   }).join('\n    ');
@@ -186,24 +185,21 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
       line-height: 1.4;
     }
     .receipt {
-      max-width: 380px;
+      width: fit-content;
       margin: 0 auto;
       background: #fff;
       padding: 16px 20px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.15);
       border-radius: 2px;
+      overflow: hidden;
     }
     .line {
       white-space: pre;
       font-size: 13px;
-      line-height: 1.5;
+      line-height: 1.6;
     }
     .line.bold {
       font-weight: 700;
-    }
-    .line.big {
-      font-size: 16px;
-      line-height: 1.6;
     }
     .footer {
       text-align: center;
