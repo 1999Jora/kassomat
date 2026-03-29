@@ -164,6 +164,7 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
       rksvQrCodeData: receipt.rksv.qrCodeData || null,
       rksvBelegnummer: receipt.rksv.belegnummer || null,
       rksvRegistrierkasseId: receipt.rksv.registrierkasseId || null,
+      rksvCertSerial: receipt.rksv.atCertificateSerial || null,
     };
 
     const tenantInfo: TenantInfo = {
@@ -269,6 +270,7 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
       rksvQrCodeData: receipt.rksv_qrCodeData ?? null,
       rksvBelegnummer: receipt.rksv_belegnummer ?? null,
       rksvRegistrierkasseId: receipt.rksv_registrierkasseId ?? null,
+      rksvCertSerial: receipt.rksv_atCertificateSerial ?? null,
     };
 
     const tenantInfo: TenantInfo = {

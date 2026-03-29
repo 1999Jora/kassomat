@@ -190,6 +190,13 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
   if (tenant.city) addressLines.push(`<div>${esc(tenant.city)}</div>`);
   if (tenant.vatNumber) addressLines.push(`<div style="margin-top:4px;font-size:13px;color:#888;">UID: ${esc(tenant.vatNumber)}</div>`);
 
+  const isDemoSigning = receipt.rksvCertSerial === 'AT0-DEMO';
+  const demoBanner = isDemoSigning
+    ? `<div style="background:#d97706;color:#fff;text-align:center;padding:8px 16px;font-size:12px;font-weight:700;letter-spacing:0.05em;">
+        ⚠ DEMO-SIGNATUR — Keine rechtsgültige RKSV-Signatur
+      </div>`
+    : '';
+
   return `<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -289,6 +296,8 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
 </head>
 <body>
   <div class="receipt">
+
+    ${demoBanner}
 
     <!-- Header -->
     <div class="receipt-header">

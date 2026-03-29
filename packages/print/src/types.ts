@@ -106,6 +106,8 @@ export interface ReceiptData {
   rksvBelegnummer: string | null;
   /** RKSV Kassen-ID */
   rksvRegistrierkasseId: string | null;
+  /** Certificate serial — 'AT0-DEMO' when demo/HMAC signing is active */
+  rksvCertSerial: string | null;
 }
 
 // ============================================================

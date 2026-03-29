@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import type { Tenant, TenantSettings, Category, Product } from '@kassomat/types';
-import api, { createNullReceipt, createTrainingReceipt, createClosingReceipt, getPrintMode, setPrintMode, type PrintMode } from '../lib/api';
+import api, { createNullReceipt, createTrainingReceipt, createClosingReceipt, getPrintMode, setPrintMode, waitForRksvSignature, printReceiptById, getDigitalReceiptUrl, type PrintMode } from '../lib/api';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -199,13 +199,34 @@ function RksvSonderbelegeSection() {
 
   async function handle(type: 'null' | 'training' | 'closing') {
     setLoading(type);
+    const mode = getPrintMode();
+    let pdfWindow: Window | null = null;
+    if (mode === 'pdf') {
+      pdfWindow = window.open('about:blank', '_blank', 'noopener');
+    }
     try {
-      if (type === 'null') await createNullReceipt();
-      else if (type === 'training') await createTrainingReceipt();
-      else await createClosingReceipt(closingId);
+      let receipt;
+      if (type === 'null') receipt = await createNullReceipt();
+      else if (type === 'training') receipt = await createTrainingReceipt();
+      else receipt = await createClosingReceipt(closingId);
+
       toast.success(type === 'null' ? 'Nullbeleg erstellt' : type === 'training' ? 'Trainingsbeleg erstellt' : 'Schlussbeleg erstellt');
+
+      await waitForRksvSignature(receipt.id);
+
+      if (mode === 'printer') {
+        await printReceiptById(receipt.id);
+      } else if (mode === 'pdf') {
+        const url = getDigitalReceiptUrl(receipt.id);
+        if (pdfWindow && !pdfWindow.closed) {
+          pdfWindow.location.href = url;
+        } else {
+          window.open(url, '_blank', 'noopener');
+        }
+      }
     } catch {
       toast.error('Fehler beim Erstellen des Belegs');
+      pdfWindow?.close();
     } finally {
       setLoading(null);
     }
