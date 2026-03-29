@@ -11,197 +11,215 @@ const MOCK_ITEMS = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+const W = 42; // Bondrucker: 42 Zeichen bei 80mm
+
 function fmtEuro(cents: number) {
   const e = Math.floor(Math.abs(cents) / 100);
   const c = Math.abs(cents) % 100;
   return `${cents < 0 ? '-' : ''}€${e},${String(c).padStart(2, '0')}`;
 }
 
+function pad(left: string, right: string, width = W) {
+  const gap = width - left.length - right.length;
+  return left + (gap > 0 ? ' '.repeat(gap) : ' ') + right;
+}
+
+function center(text: string, width = W) {
+  const gap = width - text.length;
+  if (gap <= 0) return text;
+  const left = Math.floor(gap / 2);
+  return ' '.repeat(left) + text;
+}
+
+function divider(char = '-', width = W) {
+  return char.repeat(width);
+}
+
 function fmtDate() {
-  return new Date().toLocaleString('de-AT', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
+  const now = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(now.getDate())}.${p(now.getMonth() + 1)}.${now.getFullYear()} ${p(now.getHours())}:${p(now.getMinutes())}`;
 }
 
-// ── Rechnung (HTML-Vorschau im Stil des Digital-Bons) ─────────────────────────
-
-function RechnungPreview({ config }: { config: RechnungConfig }) {
-  const items = MOCK_ITEMS;
-  const totalGross = items.reduce((s, i) => s + i.price * i.qty, 0);
-  const vat20 = items.filter(i => i.vat === 20).reduce((s, i) => {
-    const g = i.price * i.qty;
-    return s + Math.round(g * 20 / 120);
-  }, 0);
-  const vat10 = items.filter(i => i.vat === 10).reduce((s, i) => {
-    const g = i.price * i.qty;
-    return s + Math.round(g * 10 / 110);
-  }, 0);
-  const totalNet = totalGross - vat20 - vat10;
-
-  return (
-    <div className="bg-white text-gray-900 rounded-lg shadow-lg overflow-hidden max-w-[420px] mx-auto text-sm">
-      {/* Demo Banner */}
-      {config.showDemoBanner && (
-        <div className="bg-amber-600 text-white text-center py-1.5 text-[11px] font-bold tracking-wide">
-          DEMO-SIGNATUR — Keine rechtsgueltige RKSV-Signatur
-        </div>
-      )}
-
-      {/* Header */}
-      <div style={{ background: config.headerBg, color: config.headerText }} className="px-6 py-5 text-center">
-        <h2 className="text-lg font-bold">{config.tenantName}</h2>
-        <p className="text-xs mt-1 opacity-70">{config.address}</p>
-        <p className="text-xs opacity-70">{config.city}</p>
-        {config.vatNumber && <p className="text-[11px] mt-1 opacity-50">UID: {config.vatNumber}</p>}
-      </div>
-
-      <div className="px-5">
-        {/* Meta */}
-        <div className="py-3 border-b border-gray-200 text-xs space-y-1">
-          <div className="flex justify-between"><span className="text-gray-500">Bon-Nr.</span><span className="font-medium bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-[10px]">2026-000042</span></div>
-          <div className="flex justify-between"><span className="text-gray-500">Kasse</span><span>KASSE-01</span></div>
-          <div className="flex justify-between"><span className="text-gray-500">Datum</span><span>{fmtDate()}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500">Kassierer</span><span>Max M.</span></div>
-        </div>
-
-        {/* Items */}
-        <div className="py-3 border-b border-gray-200">
-          {items.map((item, i) => (
-            <div key={i} className="flex justify-between py-1">
-              <div>
-                <span className="font-semibold">{item.name}</span>
-                <span className="text-gray-500 ml-2 text-xs">{item.qty}x{fmtEuro(item.price)}</span>
-                <span className="text-gray-400 ml-2 text-[10px]">MwSt {item.vat}%</span>
-              </div>
-              <span className="font-semibold whitespace-nowrap">{fmtEuro(item.price * item.qty)}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Totals */}
-        <div className="py-3 border-b border-gray-200 text-xs space-y-1">
-          <div className="flex justify-between text-gray-500"><span>Netto</span><span>{fmtEuro(totalNet)}</span></div>
-          {vat10 > 0 && <div className="flex justify-between text-gray-500"><span>MwSt 10%</span><span>{fmtEuro(vat10)}</span></div>}
-          {vat20 > 0 && <div className="flex justify-between text-gray-500"><span>MwSt 20%</span><span>{fmtEuro(vat20)}</span></div>}
-          <div className="flex justify-between text-base font-bold border-t-2 border-gray-900 pt-2 mt-2">
-            <span>Gesamt</span><span>{fmtEuro(totalGross)}</span>
-          </div>
-        </div>
-
-        {/* Payment */}
-        <div className="py-3 border-b border-gray-200 text-xs space-y-1">
-          <div className="flex justify-between text-gray-500"><span>Zahlungsart</span><span className="font-semibold text-gray-900">Bargeld</span></div>
-          <div className="flex justify-between text-gray-500"><span>Bezahlt</span><span>{fmtEuro(2000)}</span></div>
-          <div className="flex justify-between text-gray-500"><span>Wechselgeld</span><span>{fmtEuro(2000 - totalGross)}</span></div>
-        </div>
-
-        {/* RKSV QR */}
-        {config.showQrCode && (
-          <div className="py-4 text-center">
-            <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-2">RKSV-Pruefcode</p>
-            <div className="inline-block border border-gray-200 rounded p-2 bg-white">
-              <div className="w-28 h-28 bg-gray-100 flex items-center justify-center text-gray-400 text-[10px]">
-                [QR-Code]
-              </div>
-            </div>
-            <p className="text-[9px] text-gray-300 mt-2 font-mono">_R1-AT0_KASSE-01_2026-000042_...</p>
-          </div>
-        )}
-      </div>
-
-      {/* Footer */}
-      <div className="bg-gray-50 border-t border-gray-200 px-5 py-4 text-center">
-        <p className="text-xs text-gray-500">{config.footerText}</p>
-        <p className="text-[10px] text-gray-300 mt-1">Dieser Bon wurde elektronisch erstellt und ist ohne Unterschrift gueltig.</p>
-      </div>
-    </div>
-  );
-}
-
-// ── Lieferbon-Vorschau ────────────────────────────────────────────────────────
-
-function LieferbonPreview({ config }: { config: LieferbonConfig }) {
-  const items = MOCK_ITEMS;
-  const totalGross = items.reduce((s, i) => s + i.price * i.qty, 0);
-
-  return (
-    <div className="bg-white text-gray-900 rounded-lg shadow-lg overflow-hidden max-w-[340px] mx-auto font-mono text-xs">
-      <div className="p-5 space-y-0">
-        {/* Header */}
-        <div className="text-center space-y-1 pb-3">
-          <p className="font-bold text-sm">*** KEINE RECHNUNG ***</p>
-          <p className="font-bold text-base">{config.title}</p>
-          {config.showTenantName && <p className="font-bold text-xs">{config.tenantName}</p>}
-        </div>
-
-        {/* Divider */}
-        <div className="text-gray-400 text-[10px] leading-none pb-2">{'='.repeat(46)}</div>
-
-        {/* Datum */}
-        <p className="text-[11px] text-gray-600 pb-2">Datum: {fmtDate()}</p>
-
-        {/* Lieferadresse */}
-        {config.showAddress && (
-          <>
-            <div className="text-gray-400 text-[10px] leading-none pb-1">{'-'.repeat(46)}</div>
-            <div className="pb-2">
-              <p className="text-[10px] font-bold text-gray-600">LIEFERADRESSE:</p>
-              <p className="font-bold text-sm pl-1">{config.sampleName}</p>
-              <p className="pl-1">{config.sampleStreet}</p>
-              <p className="pl-1">{config.sampleCity}</p>
-            </div>
-          </>
-        )}
-
-        {/* Artikel */}
-        <div className="text-gray-400 text-[10px] leading-none pb-2">{'='.repeat(46)}</div>
-        {items.map((item, i) => (
-          <div key={i} className="flex justify-between py-0.5">
-            <span>{item.qty}x {item.name}</span>
-            <span>{fmtEuro(item.price * item.qty)}</span>
-          </div>
-        ))}
-
-        {/* Gesamt */}
-        <div className="text-gray-400 text-[10px] leading-none py-2">{'='.repeat(46)}</div>
-        <div className="flex justify-between font-bold text-sm pb-2">
-          <span>GESAMT</span>
-          <span>{fmtEuro(totalGross)}</span>
-        </div>
-
-        {/* Footer */}
-        <div className="text-gray-400 text-[10px] leading-none pb-2">{'='.repeat(46)}</div>
-        <p className="text-center font-bold text-[11px]">*** KEINE RECHNUNG ***</p>
-      </div>
-    </div>
-  );
-}
-
-// ── Config Types ──────────────────────────────────────────────────────────────
+// ── Rechnung (ESC/POS Stil) ───────────────────────────────────────────────────
 
 interface RechnungConfig {
   tenantName: string;
   address: string;
   city: string;
   vatNumber: string;
-  headerBg: string;
-  headerText: string;
   footerText: string;
   showQrCode: boolean;
-  showDemoBanner: boolean;
+  isDemoSignature: boolean;
 }
+
+function RechnungPreview({ config }: { config: RechnungConfig }) {
+  const items = MOCK_ITEMS;
+  const totalGross = items.reduce((s, i) => s + i.price * i.qty, 0);
+  const vat20 = items.filter(i => i.vat === 20).reduce((s, i) => s + Math.round(i.price * i.qty * 20 / 120), 0);
+  const vat10 = items.filter(i => i.vat === 10).reduce((s, i) => s + Math.round(i.price * i.qty * 10 / 110), 0);
+  const totalNet = totalGross - vat20 - vat10;
+  const amountPaid = 2000;
+  const change = amountPaid - totalGross;
+
+  const lines: Array<{ text: string; bold?: boolean; big?: boolean; center?: boolean }> = [];
+
+  // Header
+  lines.push({ text: config.tenantName, bold: true, big: true, center: true });
+  if (config.address) lines.push({ text: config.address, center: true });
+  if (config.city) lines.push({ text: config.city, center: true });
+  if (config.vatNumber) lines.push({ text: `UID: ${config.vatNumber}`, center: true });
+  lines.push({ text: '' });
+
+  // Meta
+  lines.push({ text: pad('Bon-Nr.:', '2026-000042') });
+  lines.push({ text: pad('Kasse:', 'KASSE-01') });
+  lines.push({ text: pad('Datum:', fmtDate()) });
+  lines.push({ text: pad('Kassierer:', 'Max M.') });
+  lines.push({ text: pad('Belegnr.:', '2026-000042') });
+  lines.push({ text: pad('RK-ID:', 'KASSE-01') });
+  lines.push({ text: divider() });
+
+  // Items
+  for (const item of items) {
+    lines.push({ text: pad(item.name, fmtEuro(item.price * item.qty)) });
+    lines.push({ text: pad(`  ${item.qty}x ${fmtEuro(item.price)}`, `MwSt ${item.vat}%`) });
+  }
+  lines.push({ text: divider() });
+
+  // Totals
+  lines.push({ text: pad('Netto:', fmtEuro(totalNet)) });
+  if (vat10 > 0) lines.push({ text: pad('MwSt 10%:', fmtEuro(vat10)) });
+  if (vat20 > 0) lines.push({ text: pad('MwSt 20%:', fmtEuro(vat20)) });
+  lines.push({ text: pad('GESAMT:', fmtEuro(totalGross)), bold: true });
+  lines.push({ text: divider() });
+
+  // Payment
+  lines.push({ text: pad('Zahlungsart:', 'Bargeld') });
+  lines.push({ text: pad('Bezahlt:', fmtEuro(amountPaid)) });
+  if (change > 0) lines.push({ text: pad('Wechselgeld:', fmtEuro(change)) });
+
+  // RKSV QR
+  if (config.showQrCode) {
+    lines.push({ text: '' });
+    lines.push({ text: 'RKSV-Signatur', center: true });
+    lines.push({ text: '[  QR-CODE  ]', center: true, bold: true });
+    lines.push({ text: '' });
+  }
+
+  lines.push({ text: divider() });
+
+  // Footer
+  lines.push({ text: config.footerText, center: true });
+
+  // Demo
+  if (config.isDemoSignature) {
+    lines.push({ text: '' });
+    lines.push({ text: '*** DEMO-SIGNATUR ***', center: true, bold: true });
+  }
+
+  return (
+    <div className="bg-white text-black rounded shadow-lg overflow-hidden inline-block">
+      {/* Paper */}
+      <div className="px-4 py-5 font-mono text-[11px] leading-[1.6] whitespace-pre" style={{ width: `${W * 7.2 + 32}px` }}>
+        {lines.map((line, i) => {
+          let text = line.center ? center(line.text) : line.text;
+          if (!text && !line.text) text = '\u00A0'; // empty line
+          return (
+            <div
+              key={i}
+              className={`${line.bold ? 'font-bold' : ''}`}
+              style={line.big ? { fontSize: '16px', lineHeight: '1.8' } : undefined}
+            >
+              {text}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Lieferbon (ESC/POS Stil) ──────────────────────────────────────────────────
 
 interface LieferbonConfig {
   title: string;
   tenantName: string;
   showTenantName: boolean;
   showAddress: boolean;
+  showPrices: boolean;
   sampleName: string;
   sampleStreet: string;
   sampleCity: string;
 }
 
-// ── Config Input ──────────────────────────────────────────────────────────────
+function LieferbonPreview({ config }: { config: LieferbonConfig }) {
+  const items = MOCK_ITEMS;
+  const totalGross = items.reduce((s, i) => s + i.price * i.qty, 0);
+
+  const lines: Array<{ text: string; bold?: boolean; big?: boolean; center?: boolean }> = [];
+
+  // Header
+  lines.push({ text: '*** KEINE RECHNUNG ***', bold: true, center: true });
+  lines.push({ text: config.title, bold: true, big: true, center: true });
+  if (config.showTenantName) lines.push({ text: config.tenantName, bold: true, center: true });
+  lines.push({ text: divider('=') });
+
+  // Datum
+  lines.push({ text: `Datum: ${fmtDate()}` });
+  lines.push({ text: '' });
+
+  // Lieferadresse
+  if (config.showAddress) {
+    lines.push({ text: divider('-') });
+    lines.push({ text: 'LIEFERADRESSE:', bold: true });
+    lines.push({ text: `  ${config.sampleName}`, bold: true });
+    lines.push({ text: `  ${config.sampleStreet}` });
+    lines.push({ text: `  ${config.sampleCity}` });
+    lines.push({ text: '' });
+  }
+
+  // Artikel
+  lines.push({ text: divider('=') });
+  for (const item of items) {
+    if (config.showPrices) {
+      lines.push({ text: pad(`${item.qty}x ${item.name}`, fmtEuro(item.price * item.qty)) });
+    } else {
+      lines.push({ text: `${item.qty}x ${item.name}` });
+    }
+  }
+
+  // Gesamt
+  if (config.showPrices) {
+    lines.push({ text: divider('=') });
+    lines.push({ text: pad('GESAMT', fmtEuro(totalGross)), bold: true });
+  }
+
+  lines.push({ text: divider('=') });
+  lines.push({ text: '*** KEINE RECHNUNG ***', bold: true, center: true });
+
+  return (
+    <div className="bg-white text-black rounded shadow-lg overflow-hidden inline-block">
+      <div className="px-4 py-5 font-mono text-[11px] leading-[1.6] whitespace-pre" style={{ width: `${W * 7.2 + 32}px` }}>
+        {lines.map((line, i) => {
+          let text = line.center ? center(line.text) : line.text;
+          if (!text && !line.text) text = '\u00A0';
+          return (
+            <div
+              key={i}
+              className={`${line.bold ? 'font-bold' : ''}`}
+              style={line.big ? { fontSize: '16px', lineHeight: '1.8' } : undefined}
+            >
+              {text}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Shared UI ─────────────────────────────────────────────────────────────────
 
 function InputField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
@@ -213,28 +231,6 @@ function InputField({ label, value, onChange }: { label: string; value: string; 
         onChange={(e) => onChange(e.target.value)}
         className="w-full bg-white/[0.05] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-[#6b7280] outline-none focus:border-[#00e87a]/40 transition-colors"
       />
-    </div>
-  );
-}
-
-function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div>
-      <label className="text-[10px] text-[#6b7280] uppercase tracking-wider block mb-0.5">{label}</label>
-      <div className="flex gap-2">
-        <input
-          type="color"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-8 h-8 rounded border border-white/[0.08] bg-transparent cursor-pointer"
-        />
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="flex-1 bg-white/[0.05] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-white font-mono outline-none focus:border-[#00e87a]/40 transition-colors"
-        />
-      </div>
     </div>
   );
 }
@@ -264,11 +260,9 @@ export default function BonConfigPage() {
     address: 'Innrain 42',
     city: '6020 Innsbruck',
     vatNumber: 'ATU12345678',
-    headerBg: '#1a202c',
-    headerText: '#ffffff',
     footerText: 'Danke fuer Ihren Besuch!',
     showQrCode: true,
-    showDemoBanner: true,
+    isDemoSignature: true,
   });
 
   const [lieferbonCfg, setLieferbonCfg] = useState<LieferbonConfig>({
@@ -276,6 +270,7 @@ export default function BonConfigPage() {
     tenantName: 'Spaetii Innsbruck',
     showTenantName: true,
     showAddress: true,
+    showPrices: true,
     sampleName: 'Max Mustermann',
     sampleStreet: 'Testgasse 1/3',
     sampleCity: '6020 Innsbruck',
@@ -295,9 +290,8 @@ export default function BonConfigPage() {
             </svg>
           </a>
           <h1 className="text-sm font-bold">Bon-Konfigurator</h1>
+          <span className="text-[10px] text-[#6b7280] bg-white/[0.04] px-2 py-0.5 rounded font-mono">80mm / 42 Zeichen</span>
         </div>
-
-        {/* Tab switcher */}
         <div className="flex bg-white/[0.04] rounded-lg p-0.5">
           <button
             type="button"
@@ -320,33 +314,42 @@ export default function BonConfigPage() {
         </div>
       </div>
 
-      {/* Content: config left, preview right */}
+      {/* Content */}
       <div className="flex flex-col lg:flex-row h-[calc(100vh-53px)]">
-        {/* Config Panel */}
-        <div className="w-full lg:w-80 border-b lg:border-b-0 lg:border-r border-white/[0.06] overflow-y-auto scrollbar-none p-4 space-y-4 shrink-0">
+        {/* Config */}
+        <div className="w-full lg:w-72 border-b lg:border-b-0 lg:border-r border-white/[0.06] overflow-y-auto scrollbar-none p-4 space-y-3 shrink-0">
           {tab === 'rechnung' ? (
             <>
-              <p className="text-[10px] text-[#6b7280] uppercase tracking-wider font-bold">Rechnung / Kassenbon</p>
+              <p className="text-[10px] text-[#6b7280] uppercase tracking-wider font-bold">Kopfzeile</p>
               <InputField label="Firmenname" value={rechnungCfg.tenantName} onChange={(v) => updateR({ tenantName: v })} />
               <InputField label="Adresse" value={rechnungCfg.address} onChange={(v) => updateR({ address: v })} />
               <InputField label="PLZ + Ort" value={rechnungCfg.city} onChange={(v) => updateR({ city: v })} />
               <InputField label="UID-Nummer" value={rechnungCfg.vatNumber} onChange={(v) => updateR({ vatNumber: v })} />
-              <ColorField label="Header Hintergrund" value={rechnungCfg.headerBg} onChange={(v) => updateR({ headerBg: v })} />
-              <ColorField label="Header Text" value={rechnungCfg.headerText} onChange={(v) => updateR({ headerText: v })} />
+              <p className="text-[10px] text-[#6b7280] uppercase tracking-wider font-bold pt-2">Fusszeile</p>
               <InputField label="Footer Text" value={rechnungCfg.footerText} onChange={(v) => updateR({ footerText: v })} />
-              <div className="space-y-3 pt-2">
-                <Toggle label="RKSV QR-Code anzeigen" value={rechnungCfg.showQrCode} onChange={(v) => updateR({ showQrCode: v })} />
-                <Toggle label="Demo-Banner anzeigen" value={rechnungCfg.showDemoBanner} onChange={(v) => updateR({ showDemoBanner: v })} />
+              <p className="text-[10px] text-[#6b7280] uppercase tracking-wider font-bold pt-2">RKSV</p>
+              <div className="space-y-3">
+                <Toggle label="QR-Code anzeigen" value={rechnungCfg.showQrCode} onChange={(v) => updateR({ showQrCode: v })} />
+                <Toggle label="Demo-Signatur" value={rechnungCfg.isDemoSignature} onChange={(v) => updateR({ isDemoSignature: v })} />
+              </div>
+              <div className="pt-3 text-[10px] text-[#6b7280] space-y-1 border-t border-white/[0.06]">
+                <p className="font-bold">Bondrucker-Info:</p>
+                <p>80mm Papier = 42 Zeichen</p>
+                <p>Nur schwarz/weiss</p>
+                <p>Monospace-Schrift (Courier)</p>
+                <p>Formatierung: fett, doppelt gross, Ausrichtung</p>
+                <p>QR-Code via ESC/POS Befehl</p>
               </div>
             </>
           ) : (
             <>
-              <p className="text-[10px] text-[#6b7280] uppercase tracking-wider font-bold">Lieferbon</p>
+              <p className="text-[10px] text-[#6b7280] uppercase tracking-wider font-bold">Kopfzeile</p>
               <InputField label="Titel" value={lieferbonCfg.title} onChange={(v) => updateL({ title: v })} />
               <InputField label="Firmenname" value={lieferbonCfg.tenantName} onChange={(v) => updateL({ tenantName: v })} />
               <div className="space-y-3 pt-2">
                 <Toggle label="Firmenname anzeigen" value={lieferbonCfg.showTenantName} onChange={(v) => updateL({ showTenantName: v })} />
-                <Toggle label="Lieferadresse anzeigen" value={lieferbonCfg.showAddress} onChange={(v) => updateL({ showAddress: v })} />
+                <Toggle label="Lieferadresse" value={lieferbonCfg.showAddress} onChange={(v) => updateL({ showAddress: v })} />
+                <Toggle label="Preise anzeigen" value={lieferbonCfg.showPrices} onChange={(v) => updateL({ showPrices: v })} />
               </div>
               {lieferbonCfg.showAddress && (
                 <>
@@ -356,6 +359,12 @@ export default function BonConfigPage() {
                   <InputField label="PLZ + Ort" value={lieferbonCfg.sampleCity} onChange={(v) => updateL({ sampleCity: v })} />
                 </>
               )}
+              <div className="pt-3 text-[10px] text-[#6b7280] space-y-1 border-t border-white/[0.06]">
+                <p className="font-bold">Lieferbon-Info:</p>
+                <p>Kein RKSV QR-Code</p>
+                <p>"KEINE RECHNUNG" oben + unten</p>
+                <p>Nur fuer interne Lieferzwecke</p>
+              </div>
             </>
           )}
         </div>
