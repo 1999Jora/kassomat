@@ -164,7 +164,9 @@ export async function signReceiptNow(receiptId: string, tenantId: string): Promi
     signature = await signFn(signData);
   } catch (err) {
     const label = err instanceof ATrustError ? 'A-Trust' : err instanceof FiskaltrustError ? 'fiskaltrust' : 'Signing';
-    console.error(`[sign] ${label} fehlgeschlagen für ${receiptId}:`, (err as Error).message);
+    const cause = (err as { cause?: unknown }).cause;
+    const causeMsg = cause instanceof Error ? cause.message : (cause ? String(cause) : '');
+    console.error(`[sign] ${label} fehlgeschlagen für ${receiptId}:`, (err as Error).message, causeMsg);
     await prisma.receipt.update({ where: { id: receiptId }, data: { status: 'offline_pending' } });
     return;
   }
