@@ -7,6 +7,10 @@ dist
 .next
 build
 
+# Exception: pre-built local packages needed for Railway deploy
+!packages/rksv/dist
+!packages/types/dist
+
 # Environment files — NIEMALS committen!
 .env
 .env.local
