@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { formatCents } from '../lib/formatters';
 import NumPad from './NumPad';
-import api, { createReceipt, printReceiptById, getDigitalReceiptUrl, getPrintMode, waitForRksvSignature } from '../lib/api';
+import api, { createReceipt, cancelReceipt, printReceiptById, getDigitalReceiptUrl, getPrintMode, waitForRksvSignature } from '../lib/api';
 import { printLieferbon } from '../lib/print-lieferbon';
 import type { Receipt } from '@kassomat/types';
 import { io, Socket } from 'socket.io-client';
@@ -162,7 +162,17 @@ function CardTimeoutScreen({
 
 // ─── Success screen ───────────────────────────────────────────────────────────
 
-function SuccessScreen({ change, signed }: { change: number; signed: boolean }) {
+function SuccessScreen({
+  change,
+  signed,
+  onStorno,
+  stornoState,
+}: {
+  change: number;
+  signed: boolean;
+  onStorno: () => void;
+  stornoState: 'idle' | 'confirm' | 'loading' | 'done';
+}) {
   return (
     <div className="flex flex-col h-full items-center justify-center gap-4 bg-[#080a0c]">
       <div className="w-20 h-20 rounded-full bg-[#00e87a]/10 border border-[#00e87a]/20 flex items-center justify-center">
@@ -188,6 +198,30 @@ function SuccessScreen({ change, signed }: { change: number; signed: boolean }) 
           <p className="text-[10px] text-[#6b7280] uppercase tracking-wider mb-0.5">Wechselgeld</p>
           <p className="text-2xl font-bold text-[#00e87a] font-mono">{formatCents(change)}</p>
         </div>
+      )}
+      {/* Storno button — only when signed and not already cancelled */}
+      {signed && stornoState !== 'done' && (
+        <button
+          type="button"
+          onClick={onStorno}
+          disabled={stornoState === 'loading'}
+          className={`mt-2 min-h-[44px] px-5 rounded-xl text-xs font-medium transition-all border ${
+            stornoState === 'confirm'
+              ? 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20'
+              : stornoState === 'loading'
+              ? 'bg-white/[0.04] text-white/30 border-white/[0.06] cursor-wait'
+              : 'bg-transparent text-red-400/60 border-red-500/20 hover:text-red-400 hover:border-red-500/40'
+          }`}
+        >
+          {stornoState === 'loading'
+            ? 'Storniere...'
+            : stornoState === 'confirm'
+            ? 'Wirklich stornieren?'
+            : 'Letzten Bon stornieren'}
+        </button>
+      )}
+      {stornoState === 'done' && (
+        <p className="mt-2 text-red-400 text-xs font-medium">Bon storniert</p>
       )}
     </div>
   );
@@ -226,6 +260,10 @@ export default function PaymentPanel() {
   const transactionIdRef = useRef<string | null>(null);
   // Synchronous guard against double-clicks (refs update immediately, unlike state)
   const isSubmittingRef = useRef(false);
+  // Track the last created receipt for quick storno
+  const lastReceiptIdRef = useRef<string | null>(null);
+  const [stornoState, setStornoState] = useState<'idle' | 'confirm' | 'loading' | 'done'>('idle');
+  const stornoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const totalGross = cartItems.reduce((s, i) => s + i.price * i.quantity - i.discount, 0);
   const totalWithTip = totalGross + tip;
@@ -315,6 +353,8 @@ export default function PaymentPanel() {
           channel: 'direct',
         });
 
+        lastReceiptIdRef.current = receipt.id;
+        setStornoState('idle');
         void queryClient.invalidateQueries({ queryKey: ['receipts-recent'] });
         void queryClient.invalidateQueries({ queryKey: ['analytics'] });
         setDone(true);
@@ -412,6 +452,34 @@ export default function PaymentPanel() {
     }, CARD_TIMEOUT_MS);
   }
 
+  // ── Quick storno for last receipt ──────────────────────────────────────────────
+
+  function handleStorno() {
+    if (stornoState === 'idle') {
+      setStornoState('confirm');
+      // Auto-reset after 3 seconds
+      stornoTimerRef.current = setTimeout(() => setStornoState('idle'), 3000);
+      return;
+    }
+    if (stornoState === 'confirm') {
+      if (stornoTimerRef.current) clearTimeout(stornoTimerRef.current);
+      const receiptId = lastReceiptIdRef.current;
+      if (!receiptId) return;
+      setStornoState('loading');
+      cancelReceipt(receiptId)
+        .then(() => {
+          setStornoState('done');
+          toast.success('Bon storniert');
+          void queryClient.invalidateQueries({ queryKey: ['receipts-recent'] });
+          void queryClient.invalidateQueries({ queryKey: ['analytics'] });
+        })
+        .catch(() => {
+          toast.error('Storno fehlgeschlagen');
+          setStornoState('idle');
+        });
+    }
+  }
+
   // ── Wait for RKSV, then print ─────────────────────────────────────────────────
 
   async function waitAndPrint(receiptId: string) {
@@ -452,6 +520,7 @@ export default function PaymentPanel() {
       setSigned(false);
       setProcessing(false);
       isSubmittingRef.current = false;
+      setStornoState('idle');
       setMobileTab('articles');
     }, 1500);
   }
@@ -528,6 +597,8 @@ export default function PaymentPanel() {
           channel: 'direct',
         });
 
+        lastReceiptIdRef.current = receipt.id;
+        setStornoState('idle');
         void queryClient.invalidateQueries({ queryKey: ['receipts-recent'] });
         void queryClient.invalidateQueries({ queryKey: ['analytics'] });
         setChange(cashChange);
@@ -595,7 +666,7 @@ export default function PaymentPanel() {
   // ── Success screen ────────────────────────────────────────────────────────
 
   if (done) {
-    return <SuccessScreen change={change} signed={signed} />;
+    return <SuccessScreen change={change} signed={signed} onStorno={handleStorno} stornoState={stornoState} />;
   }
 
   // ── Main panel ────────────────────────────────────────────────────────────

@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, subDays } from 'date-fns';
 import { de } from 'date-fns/locale';
 import clsx from 'clsx';
+import toast from 'react-hot-toast';
 import type { AnalyticsData, Receipt } from '@kassomat/types';
-import api from '../lib/api';
+import api, { cancelReceipt } from '../lib/api';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -112,6 +113,56 @@ function MethodBadge({ method }: { method: string }) {
   return <span className={clsx('text-xs', info.cls)}>{info.label}</span>;
 }
 
+function StornoButton({ receiptId, onSuccess }: { receiptId: string; onSuccess: () => void }) {
+  const [state, setState] = useState<'idle' | 'confirm' | 'loading'>('idle');
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const handleClick = useCallback(async () => {
+    if (state === 'idle') {
+      setState('confirm');
+      timerRef.current = setTimeout(() => setState('idle'), 3000);
+      return;
+    }
+    if (state === 'confirm') {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      setState('loading');
+      try {
+        await cancelReceipt(receiptId);
+        toast.success('Bon storniert');
+        onSuccess();
+        setState('idle');
+      } catch {
+        toast.error('Storno fehlgeschlagen');
+        setState('idle');
+      }
+    }
+  }, [state, receiptId, onSuccess]);
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={state === 'loading'}
+      className={clsx(
+        'min-h-[32px] px-3 rounded-lg text-[10px] font-medium transition-all border whitespace-nowrap',
+        state === 'confirm'
+          ? 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20'
+          : state === 'loading'
+          ? 'bg-white/[0.04] text-white/30 border-white/[0.06] cursor-wait'
+          : 'bg-transparent text-red-400/50 border-red-500/15 hover:text-red-400 hover:border-red-500/30',
+      )}
+    >
+      {state === 'loading' ? 'Storniere...' : state === 'confirm' ? 'Wirklich stornieren?' : 'Stornieren'}
+    </button>
+  );
+}
+
 // ─── Loading skeleton ─────────────────────────────────────────────────────────
 
 function Skeleton({ className }: { className?: string }) {
@@ -125,6 +176,7 @@ function Skeleton({ className }: { className?: string }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const queryClient = useQueryClient();
   const [range, setRange] = useState<Range>('today');
 
   const analyticsEndpoint =
@@ -278,6 +330,15 @@ export default function DashboardPage() {
                   {formatEur(r.totals?.totalGross ?? 0)}
                 </span>
                 <StatusBadge status={r.status} />
+                {(r.status === 'signed' || r.status === 'printed') && (
+                  <StornoButton
+                    receiptId={r.id}
+                    onSuccess={() => {
+                      void queryClient.invalidateQueries({ queryKey: ['receipts-recent'] });
+                      void queryClient.invalidateQueries({ queryKey: ['analytics'] });
+                    }}
+                  />
+                )}
               </div>
             ))}
           </div>

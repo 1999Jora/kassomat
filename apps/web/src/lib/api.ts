@@ -136,8 +136,11 @@ export async function getReceipts(params?: {
   return data.data;
 }
 
-export async function cancelReceipt(receiptId: string): Promise<Receipt> {
-  const { data } = await api.post<ApiSuccess<Receipt>>(`/receipts/${receiptId}/cancel`);
+export async function cancelReceipt(receiptId: string, reason?: string): Promise<Receipt> {
+  const { data } = await api.post<ApiSuccess<Receipt>>(
+    `/receipts/${receiptId}/cancel`,
+    reason ? { reason } : undefined,
+  );
   return data.data;
 }
 
