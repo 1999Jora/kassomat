@@ -18,6 +18,7 @@ import { Toaster } from 'react-hot-toast';
 import { useAppStore } from './store/useAppStore';
 import { useRealtimeOrders } from './hooks/useRealtimeOrders';
 import { ThemeProvider } from './context/ThemeContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 1000 * 30, retry: 1 } },
@@ -105,19 +106,21 @@ function AnimatedRoutes() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <AnimatedRoutes />
-        </BrowserRouter>
-        <Toaster
-          position="bottom-right"
-          toastOptions={{
-            style: { background: '#1a1f25', color: '#fff', border: '1px solid rgba(255,255,255,0.08)' },
-            success: { iconTheme: { primary: '#00e87a', secondary: '#080a0c' } },
-          }}
-        />
-      </QueryClientProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter>
+            <AnimatedRoutes />
+          </BrowserRouter>
+          <Toaster
+            position="bottom-right"
+            toastOptions={{
+              style: { background: '#1a1f25', color: '#fff', border: '1px solid rgba(255,255,255,0.08)' },
+              success: { iconTheme: { primary: '#00e87a', secondary: '#080a0c' } },
+            }}
+          />
+        </QueryClientProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

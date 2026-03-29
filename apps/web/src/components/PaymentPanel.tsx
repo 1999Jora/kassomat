@@ -7,6 +7,7 @@ import { printLieferbon } from '../lib/print-lieferbon';
 import type { Receipt } from '@kassomat/types';
 import { io, Socket } from 'socket.io-client';
 import { useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 
 const PAYMENT_METHODS = [
   { id: 'cash', label: 'BAR', icon: '💵' },
@@ -221,6 +222,8 @@ export default function PaymentPanel() {
   const socketRef = useRef<Socket | null>(null);
   // Keep a ref to transactionId to use inside closures
   const transactionIdRef = useRef<string | null>(null);
+  // Synchronous guard against double-clicks (refs update immediately, unlike state)
+  const isSubmittingRef = useRef(false);
 
   const totalGross = cartItems.reduce((s, i) => s + i.price * i.quantity - i.discount, 0);
   const totalWithTip = totalGross + tip;
@@ -271,27 +274,73 @@ export default function PaymentPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Pending card payment info (stored when terminal is initiated, used on confirm) ──
+  const cardPaymentInfoRef = useRef<{
+    items: { productId: string; quantity: number; unitPrice: number; vatRate: 0 | 10 | 13 | 20; discount: number }[];
+    totalWithTip: number;
+    tip: number;
+  } | null>(null);
+
   // ── Card payment confirmed / declined handlers ────────────────────────────
 
   function handleCardConfirmed() {
     stopCardMonitoring();
     setCardPaymentState('confirmed');
-    void queryClient.invalidateQueries({ queryKey: ['receipts-recent'] });
-    void queryClient.invalidateQueries({ queryKey: ['analytics'] });
-    setDone(true);
-    setCardPaymentState('idle', null);
+
+    // NOW create the receipt — only after terminal approved
+    const info = cardPaymentInfoRef.current;
+    if (!info) {
+      setCardPaymentState('idle', null);
+      setProcessing(false);
+      isSubmittingRef.current = false;
+      return;
+    }
+
+    (async () => {
+      try {
+        const receipt: Receipt = await createReceipt({
+          items: info.items,
+          payment: {
+            method: 'card',
+            amountPaid: info.totalWithTip,
+            change: 0,
+            tip: info.tip,
+          },
+          channel: 'direct',
+        });
+
+        void queryClient.invalidateQueries({ queryKey: ['receipts-recent'] });
+        void queryClient.invalidateQueries({ queryKey: ['analytics'] });
+        setDone(true);
+        setCardPaymentState('idle', null);
+        cardPaymentInfoRef.current = null;
+        void waitAndPrint(receipt.id);
+      } catch {
+        toast.error('Bon konnte nicht erstellt werden. Bitte manuell prüfen.');
+        setCardPaymentState('idle', null);
+        setProcessing(false);
+        isSubmittingRef.current = false;
+        cardPaymentInfoRef.current = null;
+      }
+    })();
   }
 
   function handleCardDeclined() {
     stopCardMonitoring();
     setCardPaymentState('declined');
     setProcessing(false);
+    isSubmittingRef.current = false;
+    cardPaymentInfoRef.current = null;
+    toast.error('Karte abgelehnt.');
   }
 
   function handleCardTimeout() {
     stopCardMonitoring();
     setCardPaymentState('timeout');
     setProcessing(false);
+    isSubmittingRef.current = false;
+    cardPaymentInfoRef.current = null;
+    toast.error('Kartenterminal hat nicht reagiert.');
   }
 
   // ── Start card payment monitoring (socket + poll fallback) ────────────────
@@ -394,6 +443,7 @@ export default function PaymentPanel() {
       setDone(false);
       setSigned(false);
       setProcessing(false);
+      isSubmittingRef.current = false;
       setMobileTab('articles');
     }, 1500);
   }
@@ -408,13 +458,16 @@ export default function PaymentPanel() {
 
   async function handleCreateReceipt() {
     if (cartItems.length === 0) return;
+    // Synchronous double-click guard — ref updates immediately unlike state
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setProcessing(true);
 
     if (paymentMethod === 'card') {
-      // ── Card flow ──────────────────────────────────────────────────────────
+      // ── Card flow: initiate terminal FIRST, receipt only on confirmation ──
       try {
-        // Step 1: Create the receipt
-        const receipt: Receipt = await createReceipt({
+        // Save payment info for receipt creation after terminal confirms
+        cardPaymentInfoRef.current = {
           items: cartItems.map((i) => ({
             productId: i.productId,
             quantity: i.quantity,
@@ -422,37 +475,30 @@ export default function PaymentPanel() {
             vatRate: i.vatRate,
             discount: i.discount,
           })),
-          payment: {
-            method: 'card',
-            amountPaid: totalWithTip,
-            change: 0,
-            tip,
-          },
-          channel: 'direct',
-        });
+          totalWithTip,
+          tip,
+        };
 
-        // Step 2: Trigger print (non-blocking)
-        void waitAndPrint(receipt.id);
-
-        // Step 3: Initiate the terminal payment
+        // Step 1: Initiate the terminal payment (no receipt yet)
         const { data: initiateData } = await api.post<{
           success: boolean;
           data: { transactionId: string; status: 'pending' };
         }>('/payments/card/initiate', {
           amount: totalWithTip,
           currency: 'EUR',
-          receiptId: receipt.id,
-          orderId: receipt.id,
         });
 
         const txId = initiateData.data.transactionId;
         setCardPaymentState('waiting', txId);
 
-        // Step 3: Start monitoring
+        // Step 2: Start monitoring — receipt will be created in handleCardConfirmed
         startCardMonitoring(txId);
       } catch {
+        toast.error('Zahlung fehlgeschlagen. Bitte erneut versuchen.');
         setProcessing(false);
         setCardPaymentState('idle', null);
+        cardPaymentInfoRef.current = null;
+        isSubmittingRef.current = false;
       }
     } else {
       // ── Cash / Online flow ─────────────────────────────────────────────────
@@ -480,7 +526,9 @@ export default function PaymentPanel() {
         setDone(true);
         void waitAndPrint(receipt.id);
       } catch {
+        toast.error('Zahlung fehlgeschlagen. Bitte erneut versuchen.');
         setProcessing(false);
+        isSubmittingRef.current = false;
       }
     }
   }
