@@ -88,6 +88,15 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
   if (tenant.vatNumber) lines.push({ text: center(`UID: ${tenant.vatNumber}`) });
   lines.push({ text: '' });
 
+  // Storno header (cancellation receipts)
+  if (receipt.receiptType === 'cancellation' || receipt.cancelledReceiptNumber) {
+    lines.push({ text: center('*** STORNOBELEG ***'), bold: true });
+    if (receipt.cancelledReceiptNumber) {
+      lines.push({ text: center(`Storno zu Bon-Nr.: ${receipt.cancelledReceiptNumber}`) });
+    }
+    lines.push({ text: '' });
+  }
+
   // Meta
   lines.push({ text: leftRight('Bon-Nr.:', receipt.receiptNumber) });
   lines.push({ text: leftRight('Kasse:', receipt.cashRegisterId) });

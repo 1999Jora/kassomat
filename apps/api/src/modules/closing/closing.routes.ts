@@ -3,6 +3,42 @@ import type { FastifyInstance } from 'fastify';
 import { ClosingService } from './closing.service';
 import { requireRole } from '../../middleware/auth';
 
+/**
+ * Build a BMF-spec DEP export from DEPEntry rows, grouping by Signaturzertifikat.
+ * Each certificate serial gets its own Belege-Gruppe per RKSV spec.
+ */
+function buildDEPFromEntries(entries: Array<{ rawData: unknown }>): {
+  'Belege-Gruppe': Array<{
+    Signaturzertifikat: string;
+    Zertifizierungsstellen: string[];
+    'Belege-kompakt': string[];
+  }>;
+} {
+  // Group entries by certificate serial from rawData
+  const groups = new Map<string, string[]>();
+
+  for (const entry of entries) {
+    const raw = entry.rawData as Record<string, unknown>;
+    const certSerial = (raw?.Zertifikatsseriennummer as string) ?? 'UNKNOWN';
+
+    if (!groups.has(certSerial)) {
+      groups.set(certSerial, []);
+    }
+    groups.get(certSerial)!.push(JSON.stringify(raw));
+  }
+
+  const belegeGruppen = Array.from(groups.entries()).map(([certSerial, belegeKompakt]) => ({
+    // TODO: In production, Signaturzertifikat must be the actual DER-encoded X.509
+    // certificate in Base64. For now, we use the cert serial as a temporary identifier
+    // since fiskaltrust demo mode does not provide the actual certificate.
+    Signaturzertifikat: Buffer.from(certSerial, 'utf8').toString('base64'),
+    Zertifizierungsstellen: ['A-Trust'],
+    'Belege-kompakt': belegeKompakt,
+  }));
+
+  return { 'Belege-Gruppe': belegeGruppen };
+}
+
 export async function closingRoutes(fastify: FastifyInstance): Promise<void> {
   const service = new ClosingService();
 
@@ -113,13 +149,7 @@ export async function closingRoutes(fastify: FastifyInstance): Promise<void> {
         orderBy: { timestamp: 'asc' },
       });
 
-      const dep = {
-        'Belege-Gruppe': [{
-          Signaturzertifikat: entries[0]?.rksv_hash ?? '',
-          Zertifizierungsstellen: ['A-Trust'],
-          'Belege-kompakt': entries.map(e => JSON.stringify(e.rawData)),
-        }],
-      };
+      const dep = buildDEPFromEntries(entries);
 
       return reply
         .header('Content-Disposition', `attachment; filename="dep-export-full.json"`)
@@ -145,13 +175,7 @@ export async function closingRoutes(fastify: FastifyInstance): Promise<void> {
         orderBy: { timestamp: 'asc' },
       });
 
-      const dep = {
-        'Belege-Gruppe': [{
-          Signaturzertifikat: entries[0]?.rksv_hash ?? '',
-          Zertifizierungsstellen: ['A-Trust'],
-          'Belege-kompakt': entries.map(e => JSON.stringify(e.rawData)),
-        }],
-      };
+      const dep = buildDEPFromEntries(entries);
 
       return reply
         .header('Content-Disposition', `attachment; filename="dep-export-${query.from}-${query.to}.json"`)

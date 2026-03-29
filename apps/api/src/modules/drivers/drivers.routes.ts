@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../../lib/prisma.js';
+import { requireRole } from '../../middleware/auth.js';
 
 // Cast to any until prisma generate picks up the new Driver model
 const db = prisma as any;
@@ -32,7 +33,7 @@ export async function driversRoutes(app: FastifyInstance) {
   // POST /drivers — create driver
   app.post<{ Body: { name: string; pin: string; color?: string } }>(
     '/drivers',
-    { onRequest: [app.authenticate] },
+    { preHandler: [app.authenticate, requireRole('owner', 'admin')] },
     async (req) => {
       const tenantId = (req.user as any).tenantId;
       const { name, pin, color } = req.body;
@@ -45,7 +46,7 @@ export async function driversRoutes(app: FastifyInstance) {
   // PUT /drivers/:id — update driver
   app.put<{ Params: { id: string }; Body: { name?: string; pin?: string; color?: string; isActive?: boolean } }>(
     '/drivers/:id',
-    { onRequest: [app.authenticate] },
+    { preHandler: [app.authenticate, requireRole('owner', 'admin')] },
     async (req) => {
       const tenantId = (req.user as any).tenantId;
       return db.driver.update({
@@ -58,7 +59,7 @@ export async function driversRoutes(app: FastifyInstance) {
   // DELETE /drivers/:id
   app.delete<{ Params: { id: string } }>(
     '/drivers/:id',
-    { onRequest: [app.authenticate] },
+    { preHandler: [app.authenticate, requireRole('owner', 'admin')] },
     async (req, reply) => {
       const tenantId = (req.user as any).tenantId;
       await db.driver.delete({ where: { id: req.params.id, tenantId } });

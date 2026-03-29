@@ -3,6 +3,10 @@ import { Server as SocketIOServer } from 'socket.io';
 import type { FastifyInstance } from 'fastify';
 import type { JWTPayload } from '@kassomat/types';
 import { RealtimeService } from '../modules/realtime/realtime.service';
+import { prisma } from '../lib/prisma';
+
+// Cast to any until prisma generate picks up the Driver model
+const db = prisma as any;
 
 // ---------------------------------------------------------------------------
 // Extend FastifyInstance with io and realtime decorations
@@ -32,31 +36,57 @@ export default fp(async (fastify: FastifyInstance) => {
   });
 
   // --------------------------------------------------------------------------
-  // Auth middleware — verify JWT on every connection attempt
-  // Drivers may connect without JWT (they use driver PIN auth instead).
-  // If a token is provided it is verified; otherwise the socket is marked
-  // as unauthenticated and must supply tenantId via handshake query/auth.
+  // Auth middleware — verify JWT or driver PIN on every connection attempt.
+  // If a valid JWT is provided, use it. Otherwise require driverPin + driverId
+  // in the handshake query and verify against the DB. If neither is valid,
+  // reject the connection.
   // --------------------------------------------------------------------------
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     // The client must pass the JWT either as a query param or in the auth object
     const token: unknown =
       socket.handshake.auth?.['token'] ??
       socket.handshake.query?.['token'];
 
-    if (!token || typeof token !== 'string') {
-      // Allow unauthenticated connections (e.g. driver GPS clients)
-      return next();
+    if (token && typeof token === 'string') {
+      try {
+        // Re-use the Fastify JWT plugin's verification
+        const payload = fastify.jwt.verify<JWTPayload>(token);
+        // Attach payload so we can access tenantId in the connect handler
+        (socket as typeof socket & { jwtPayload: JWTPayload }).jwtPayload = payload;
+        return next();
+      } catch {
+        return next(new Error('Authentication error: invalid or expired token'));
+      }
     }
 
-    try {
-      // Re-use the Fastify JWT plugin's verification
-      const payload = fastify.jwt.verify<JWTPayload>(token);
-      // Attach payload so we can access tenantId in the connect handler
-      (socket as typeof socket & { jwtPayload: JWTPayload }).jwtPayload = payload;
-      return next();
-    } catch {
-      return next(new Error('Authentication error: invalid or expired token'));
+    // No JWT — try driver PIN auth
+    const driverPin: unknown =
+      socket.handshake.auth?.['driverPin'] ??
+      socket.handshake.query?.['driverPin'];
+    const driverId: unknown =
+      socket.handshake.auth?.['driverId'] ??
+      socket.handshake.query?.['driverId'];
+
+    if (driverPin && typeof driverPin === 'string' && driverId && typeof driverId === 'string') {
+      try {
+        const driver = await db.driver.findFirst({
+          where: { id: driverId, pin: driverPin, isActive: true },
+          select: { id: true, tenantId: true, name: true },
+        });
+        if (driver) {
+          // Attach verified tenantId from DB (never trust client-supplied tenantId)
+          (socket as typeof socket & { verifiedTenantId: string }).verifiedTenantId = driver.tenantId;
+          (socket as typeof socket & { driverId: string }).driverId = driver.id;
+          return next();
+        }
+      } catch {
+        // DB error — fall through to reject
+      }
+      return next(new Error('Authentication error: invalid driver credentials'));
     }
+
+    // Neither JWT nor valid driver credentials — reject
+    return next(new Error('Authentication required'));
   });
 
   // --------------------------------------------------------------------------
@@ -64,11 +94,10 @@ export default fp(async (fastify: FastifyInstance) => {
   // --------------------------------------------------------------------------
   io.on('connection', (socket) => {
     const payload = (socket as typeof socket & { jwtPayload?: JWTPayload }).jwtPayload;
+    const verifiedTenantId = (socket as typeof socket & { verifiedTenantId?: string }).verifiedTenantId;
 
-    // tenantId aus JWT oder aus handshake query (Fahrer ohne Login)
-    let tenantId: string | undefined =
-      payload?.tenantId ??
-      (socket.handshake.query?.['tenantId'] as string | undefined);
+    // tenantId from JWT or from verified driver lookup — NEVER from client query
+    const tenantId: string | undefined = payload?.tenantId ?? verifiedTenantId;
 
     if (tenantId) {
       const room = `tenant_${tenantId}`;
@@ -80,14 +109,15 @@ export default fp(async (fastify: FastifyInstance) => {
     } else {
       fastify.log.info(
         { socketId: socket.id },
-        '[Socket.io] Unauthenticated client connected (no tenantId)',
+        '[Socket.io] Client connected without tenantId',
       );
     }
 
     // Relay GPS from driver to all clients in the tenant room
-    socket.on('driver:gps', (data: { driverId: string; tenantId?: string; lat: number; lng: number; heading?: number; speed?: number }) => {
-      const room = `tenant_${tenantId ?? data.tenantId}`;
-      if (room !== 'tenant_undefined') {
+    socket.on('driver:gps', (data: { driverId: string; lat: number; lng: number; heading?: number; speed?: number }) => {
+      // Only emit to the verified tenant room — ignore any client-supplied tenantId
+      const room = `tenant_${tenantId}`;
+      if (tenantId) {
         socket.to(room).emit('driver:gps', data);
       }
     });

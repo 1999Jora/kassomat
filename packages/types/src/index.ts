@@ -269,6 +269,11 @@ export interface RKSVData {
   signedAt: Date | null;
   /** Seriennummer des A-Trust Zertifikats */
   atCertificateSerial: string;
+  /**
+   * BASE64(SHA256(previous_signature)[0:8]) — RKSV §8 Sig-Voriger-Beleg
+   * Computed from the previous receipt's signature, NOT the hash chain value.
+   */
+  sigVorigerBeleg?: string;
 }
 
 // ============================================================

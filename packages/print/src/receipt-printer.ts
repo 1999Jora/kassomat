@@ -84,6 +84,20 @@ export function buildReceiptBuffer(receipt: ReceiptData, tenant: TenantInfo): Bu
 
   b.feed(1);
 
+  // --- Storno header (cancellation receipts) ---
+  if (receipt.receiptType === 'cancellation' || receipt.cancelledReceiptNumber) {
+    b.align('center');
+    b.bold(true);
+    b.fontSize(2);
+    b.text('*** STORNOBELEG ***');
+    b.fontSize(1);
+    b.bold(false);
+    if (receipt.cancelledReceiptNumber) {
+      b.text(`Storno zu Bon-Nr.: ${receipt.cancelledReceiptNumber}`);
+    }
+    b.feed(1);
+  }
+
   // --- Receipt meta ---
   b.align('left');
   b.printLine('Bon-Nr.:', receipt.receiptNumber, WIDTH);

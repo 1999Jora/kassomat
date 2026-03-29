@@ -30,7 +30,7 @@ async function getPreviousReceiptHash(tenantId: string, currentReceiptId: string
       rksv_receiptHash: { not: null },
       status: { in: ['signed', 'printed'] },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { receiptNumber: 'desc' },
     select: { rksv_receiptHash: true },
   });
   return previous?.rksv_receiptHash ?? calculateInitialHash();
@@ -44,7 +44,7 @@ async function getPreviousSignature(tenantId: string, currentReceiptId: string):
       rksv_signature: { not: null },
       status: { in: ['signed', 'printed'] },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { receiptNumber: 'desc' },
     select: { rksv_signature: true },
   });
   return previous?.rksv_signature ?? null;
@@ -159,7 +159,11 @@ export async function signReceiptNow(receiptId: string, tenantId: string): Promi
     previousHash,
   ].join('|');
 
+  // Determine if this is a real SEE provider (not demo mode)
+  const hasRealSEE = hasAtrust || hasFiskaltrust;
   let signature: string;
+  let seeFailure = false;
+
   try {
     signature = await signFn(signData);
   } catch (err) {
@@ -167,10 +171,18 @@ export async function signReceiptNow(receiptId: string, tenantId: string): Promi
     const cause = (err as { cause?: unknown }).cause;
     const causeMsg = cause instanceof Error ? cause.message : (cause ? String(cause) : '');
     console.error(`[sign] ${label} fehlgeschlagen für ${receiptId}:`, (err as Error).message, causeMsg);
-    // Fallback: Demo-Signatur damit QR-Code generiert wird
-    console.warn(`[sign] Fallback auf Demo-Signatur für ${receiptId}`);
-    signature = createHmac('sha256', tenantId).update(signData).digest('base64');
-    certSerial = 'AT0-DEMO';
+
+    if (hasRealSEE) {
+      // RKSV §13 Ausfallsmodus: SEE ist ausgefallen — keine Fake-Signatur erzeugen
+      console.error(`[sign] AUSFALLSMODUS (RKSV §13): Sicherheitseinrichtung ausgefallen für ${receiptId}`);
+      seeFailure = true;
+      signature = 'Sicherheitseinrichtung ausgefallen';
+    } else {
+      // Demo-Modus: Fallback HMAC ist ok da kein echtes SEE konfiguriert
+      console.warn(`[sign] Fallback auf Demo-Signatur für ${receiptId}`);
+      signature = createHmac('sha256', tenantId).update(signData).digest('base64');
+      certSerial = 'AT0-DEMO';
+    }
   }
 
   const receiptHash = calculateReceiptHash(
@@ -189,7 +201,10 @@ export async function signReceiptNow(receiptId: string, tenantId: string): Promi
   let cumulativeSum = 0;
   const aesKey = await getOrCreateAesKey(tenantId);
 
-  if (isStorno) {
+  if (seeFailure) {
+    // RKSV §13: Bei SEE-Ausfall Umsatzzähler als Klartext kennzeichnen
+    umsatzzaehlerEncrypted = 'Sicherheitseinrichtung ausgefallen';
+  } else if (isStorno) {
     umsatzzaehlerEncrypted = encryptSpecialMarker('STO', receipt.cashRegisterId, receipt.receiptNumber, aesKey);
   } else if (isTraining) {
     umsatzzaehlerEncrypted = encryptSpecialMarker('TRA', receipt.cashRegisterId, receipt.receiptNumber, aesKey);
@@ -211,6 +226,7 @@ export async function signReceiptNow(receiptId: string, tenantId: string): Promi
     qrCodeData: '',
     signedAt: new Date(),
     atCertificateSerial: certSerial,
+    sigVorigerBeleg,
   };
 
   const fullReceipt: Receipt = {
@@ -246,10 +262,13 @@ export async function signReceiptNow(receiptId: string, tenantId: string): Promi
   const qrCodeData = buildQRCodeData(fullReceipt, rksv, umsatzzaehlerEncrypted, sigVorigerBeleg);
   rksv.qrCodeData = qrCodeData;
 
+  // RKSV §13: Bei SEE-Ausfall wird der Bon als signed gespeichert aber mit seeFailure-Flag
+  const receiptStatus = seeFailure ? 'offline_pending' : 'signed';
+
   await prisma.receipt.update({
     where: { id: receiptId },
     data: {
-      status: 'signed',
+      status: receiptStatus,
       rksv_registrierkasseId: receipt.cashRegisterId,
       rksv_belegnummer: receipt.receiptNumber,
       rksv_barumsatzSumme: cumulativeSum,
@@ -269,7 +288,7 @@ export async function signReceiptNow(receiptId: string, tenantId: string): Promi
       tenantId,
       receiptId,
       belegnummer: receipt.receiptNumber,
-      belegtyp: receipt.type,
+      belegtyp: seeFailure ? `${receipt.type}:SEE_AUSFALL` : receipt.type,
       timestamp: receipt.createdAt,
       rksv_hash: receiptHash,
       signature,
@@ -312,5 +331,9 @@ export async function signReceiptNow(receiptId: string, tenantId: string): Promi
     },
   });
 
-  console.log(`[sign] Bon ${receipt.receiptNumber} signiert (${receipt.type}, ${hasAtrust ? 'A-Trust' : 'fiskaltrust'})`);
+  if (seeFailure) {
+    console.error(`[sign] Bon ${receipt.receiptNumber} im AUSFALLSMODUS gespeichert (${receipt.type}, SEE ausgefallen)`);
+  } else {
+    console.log(`[sign] Bon ${receipt.receiptNumber} signiert (${receipt.type}, ${hasAtrust ? 'A-Trust' : hasFiskaltrust ? 'fiskaltrust' : 'Demo'})`);
+  }
 }

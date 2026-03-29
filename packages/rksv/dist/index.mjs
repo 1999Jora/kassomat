@@ -390,9 +390,12 @@ var DEPBuilder = class {
     const belegeGruppen = [];
     for (const gruppe of this.gruppen.values()) {
       belegeGruppen.push({
-        // Zertifikat als Base64-kodierter String (Serial-Nummer als Platzhalter)
-        // In der Praxis wäre hier das DER-kodierte X.509-Zertifikat als Base64
-        Signaturzertifikat: Buffer.from(gruppe.certSerial, "utf8").toString("base64"),
+        // TODO: Signaturzertifikat must be the actual DER-encoded X.509 certificate
+        // in Base64 per BMF spec. Currently we use the certificate serial number as
+        // a temporary identifier because fiskaltrust demo mode does not provide the
+        // actual X.509 certificate. In production with A-Trust, this must be replaced
+        // with the real certificate obtained from the signing provider.
+        Signaturzertifikat: `PLACEHOLDER:${gruppe.certSerial}`,
         Zertifizierungsstellen: ["A-Trust"],
         "Belege-kompakt": gruppe.belegeKompakt
       });
@@ -428,7 +431,10 @@ var DEPBuilder = class {
       Umsatz_Null: centsToEuro(receipt.totals.vat0),
       Verschluesselter_Umsatzzaehler: verschlUmsatz,
       Zertifikatsseriennummer: rksv.atCertificateSerial,
-      Sig_Voriger_Beleg: rksv.previousReceiptHash,
+      // RKSV §8: Sig_Voriger_Beleg = BASE64(SHA256(previous_signature)[0:8])
+      // Use pre-computed value from rksv.sigVorigerBeleg if available,
+      // otherwise this is a legacy fallback that is incorrect (previousReceiptHash != sig hash)
+      Sig_Voriger_Beleg: rksv.sigVorigerBeleg ?? buildSigVorigerBeleg(null),
       Signaturwert: rksv.signature
     };
   }
