@@ -359,7 +359,7 @@ export default function PaymentPanel() {
 
   // ── Wait for RKSV, then print ─────────────────────────────────────────────────
 
-  async function waitAndPrint(receiptId: string, pdfWindow?: Window | null) {
+  async function waitAndPrint(receiptId: string) {
     // Lieferbon-Daten vor clearCart sichern
     const isDelivery = orderType === 'delivery';
     const deliveryCopy = isDelivery ? { ...deliveryInfo } : null;
@@ -377,13 +377,8 @@ export default function PaymentPanel() {
         // Print errors are non-fatal
       }
     } else if (mode === 'pdf') {
-      const url = getDigitalReceiptUrl(receiptId);
-      // Navigate the pre-opened window (avoids popup blocker); fallback to new window
-      if (pdfWindow && !pdfWindow.closed) {
-        pdfWindow.location.href = url;
-      } else {
-        window.open(url, '_blank', 'noopener');
-      }
+      // Direkt nach Signierung öffnen — kein about:blank mehr
+      window.open(getDigitalReceiptUrl(receiptId), '_blank', 'noopener');
     }
 
     // Bei Lieferung: zusätzlich Lieferbon drucken (kein RKSV, "Keine Rechnung")
@@ -414,14 +409,6 @@ export default function PaymentPanel() {
   async function handleCreateReceipt() {
     if (cartItems.length === 0) return;
     setProcessing(true);
-
-    // Open PDF window synchronously here — BEFORE any await — so browsers
-    // don't block it as a popup (window.open must happen in the click handler).
-    const mode = getPrintMode();
-    let pdfWindow: Window | null = null;
-    if (mode === 'pdf' && paymentMethod !== 'card') {
-      pdfWindow = window.open('about:blank', '_blank', 'noopener');
-    }
 
     if (paymentMethod === 'card') {
       // ── Card flow ──────────────────────────────────────────────────────────
@@ -491,7 +478,7 @@ export default function PaymentPanel() {
         void queryClient.invalidateQueries({ queryKey: ['analytics'] });
         setChange(cashChange);
         setDone(true);
-        void waitAndPrint(receipt.id, pdfWindow);
+        void waitAndPrint(receipt.id);
       } catch {
         setProcessing(false);
       }

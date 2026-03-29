@@ -201,10 +201,6 @@ function RksvSonderbelegeSection() {
   async function handle(type: 'null' | 'training' | 'closing') {
     setLoading(type);
     const mode = getPrintMode();
-    let pdfWindow: Window | null = null;
-    if (mode === 'pdf') {
-      pdfWindow = window.open('about:blank', '_blank', 'noopener');
-    }
     try {
       let receipt;
       if (type === 'null') receipt = await createNullReceipt();
@@ -218,16 +214,10 @@ function RksvSonderbelegeSection() {
       if (mode === 'printer') {
         await printReceiptById(receipt.id);
       } else if (mode === 'pdf') {
-        const url = getDigitalReceiptUrl(receipt.id);
-        if (pdfWindow && !pdfWindow.closed) {
-          pdfWindow.location.href = url;
-        } else {
-          window.open(url, '_blank', 'noopener');
-        }
+        window.open(getDigitalReceiptUrl(receipt.id), '_blank', 'noopener');
       }
     } catch {
       toast.error('Fehler beim Erstellen des Belegs');
-      pdfWindow?.close();
     } finally {
       setLoading(null);
     }

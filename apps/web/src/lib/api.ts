@@ -164,8 +164,8 @@ export async function getReceiptById(receiptId: string): Promise<Receipt> {
 /** Poll until receipt is signed (or timeout). Returns the signed receipt. */
 export async function waitForRksvSignature(
   receiptId: string,
-  timeoutMs = 30_000,
-  intervalMs = 2_000,
+  timeoutMs = 15_000,
+  intervalMs = 500,
 ): Promise<Receipt> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {

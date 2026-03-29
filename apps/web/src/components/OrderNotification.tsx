@@ -280,12 +280,7 @@ export default function OrderNotification({ onClose }: Props) {
       const apiUrl = import.meta.env['VITE_API_URL'] ?? '';
       const paymentMethod = order.paymentMethod === 'online_paid' ? 'online' : 'cash';
 
-      // Gleicher Flow wie POS: Print-Mode lesen + PDF-Fenster VOR await öffnen
       const mode = getPrintMode();
-      let pdfWindow: Window | null = null;
-      if (mode === 'pdf') {
-        pdfWindow = window.open('about:blank', '_blank', 'noopener');
-      }
 
       const res = await fetch(`${apiUrl}/orders/${order.id}/receipt`, {
         method: 'POST',
@@ -297,19 +292,13 @@ export default function OrderNotification({ onClose }: Props) {
       const body = await res.json();
       const receiptId: string = body.data.id;
 
-      // Auf RKSV-Signierung warten, dann über Server drucken
+      // Auf RKSV-Signierung warten, dann drucken
       await waitForRksvSignature(receiptId);
 
       if (mode === 'printer') {
         await printReceiptById(receiptId);
       } else if (mode === 'pdf') {
-        const url = getDigitalReceiptUrl(receiptId);
-        // Navigate pre-opened window; fallback to new window (noopener returns null in Chrome)
-        if (pdfWindow && !pdfWindow.closed) {
-          pdfWindow.location.href = url;
-        } else {
-          window.open(url, '_blank', 'noopener');
-        }
+        window.open(getDigitalReceiptUrl(receiptId), '_blank', 'noopener');
       }
 
       playSuccess();
