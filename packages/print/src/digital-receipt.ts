@@ -23,7 +23,7 @@ function fmtEuro(cents: number): string {
   const abs = Math.abs(cents);
   const euros = Math.floor(abs / 100);
   const centsPart = abs % 100;
-  const formatted = `${euros},${String(centsPart).padStart(2, '0')}`;
+  const formatted = `\u20AC${euros},${String(centsPart).padStart(2, '0')}`;
   return negative ? `-${formatted}` : formatted;
 }
 
