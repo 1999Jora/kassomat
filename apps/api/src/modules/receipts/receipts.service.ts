@@ -1,8 +1,30 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { NotFoundError, ValidationError } from '../../lib/errors';
 import { signReceiptNow } from '../../lib/sign-receipt';
 import type { SalesChannel, PaymentMethod, VatRate } from '@kassomat/types';
-import type { Prisma } from '@prisma/client';
+
+const MAX_RECEIPT_TX_RETRIES = 3;
+
+/** Run a transaction with Serializable isolation and retry on serialization failure */
+async function withSerializableRetry<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  for (let attempt = 1; attempt <= MAX_RECEIPT_TX_RETRIES; attempt++) {
+    try {
+      return await prisma.$transaction(fn, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      // PostgreSQL serialization failure = 40001
+      if (code === '40001' && attempt < MAX_RECEIPT_TX_RETRIES) {
+        console.warn(`[receipts] Serialization failure, retry ${attempt}/${MAX_RECEIPT_TX_RETRIES}`);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('withSerializableRetry: unreachable');
+}
 
 const VAT_NUM: Record<string, 0 | 10 | 13 | 20> = {
   VAT_0: 0,
@@ -19,9 +41,12 @@ function toVatEnum(rate: VatRate): 'VAT_0' | 'VAT_10' | 'VAT_13' | 'VAT_20' {
 }
 
 type ReceiptWithItems = Prisma.ReceiptGetPayload<{ include: { items: true } }>;
+type ReceiptWithItemsAndStorno = ReceiptWithItems & {
+  cancelledReceipt?: { id: string; receiptNumber: string } | null;
+};
 
 /** Map a flat Prisma receipt + items to the nested Receipt API shape */
-function toReceiptResponse(receipt: ReceiptWithItems) {
+function toReceiptResponse(receipt: ReceiptWithItemsAndStorno) {
   return {
     id: receipt.id,
     tenantId: receipt.tenantId,
@@ -33,6 +58,11 @@ function toReceiptResponse(receipt: ReceiptWithItems) {
     cashierId: receipt.cashierId,
     channel: receipt.channel,
     externalOrderId: receipt.externalOrderId,
+    cancelledReceiptId: receipt.cancelledReceiptId ?? undefined,
+    cancelledReceipt: receipt.cancelledReceipt ? {
+      id: receipt.cancelledReceipt.id,
+      receiptNumber: receipt.cancelledReceipt.receiptNumber,
+    } : undefined,
     items: receipt.items.map((item) => ({
       id: item.id,
       receiptId: item.receiptId,
@@ -151,10 +181,10 @@ export class ReceiptsService {
     const amountPaid = input.payment.amountPaid;
     const change = input.payment.method === 'cash' ? Math.max(0, amountPaid - totals.totalGross - tip) : 0;
 
-    const receipt = await prisma.$transaction(async (tx) => {
+    const receipt = await withSerializableRetry(async (tx) => {
       const last = await tx.receipt.findFirst({
         where: { tenantId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { receiptNumber: 'desc' },
         select: { receiptNumber: true },
       });
 
@@ -201,7 +231,7 @@ export class ReceiptsService {
   async getById(tenantId: string, receiptId: string) {
     const receipt = await prisma.receipt.findFirst({
       where: { id: receiptId, tenantId },
-      include: { items: true },
+      include: { items: true, cancelledReceipt: { select: { id: true, receiptNumber: true } } },
     });
     if (!receipt) throw new NotFoundError('Bon');
     return toReceiptResponse(receipt);
@@ -235,7 +265,7 @@ export class ReceiptsService {
         skip,
         take: pageSize,
         orderBy: { createdAt: 'desc' },
-        include: { items: true },
+        include: { items: true, cancelledReceipt: { select: { id: true, receiptNumber: true } } },
       }),
       prisma.receipt.count({ where }),
     ]);
@@ -254,12 +284,12 @@ export class ReceiptsService {
       throw new ValidationError('Dieser Bon wurde bereits storniert');
     }
 
-    const cancelReceipt = await prisma.$transaction(async (tx) => {
+    const cancelReceipt = await withSerializableRetry(async (tx) => {
       await tx.receipt.update({ where: { id: receiptId }, data: { status: 'cancelled' } });
 
       const last = await tx.receipt.findFirst({
         where: { tenantId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { receiptNumber: 'desc' },
         select: { receiptNumber: true },
       });
 
@@ -282,6 +312,7 @@ export class ReceiptsService {
           cashierId,
           channel: original.channel,
           externalOrderId: null,
+          cancelledReceiptId: receiptId,
           paymentMethod: original.payment.method,
           amountPaid: -original.payment.amountPaid,
           change: 0,
@@ -307,13 +338,13 @@ export class ReceiptsService {
             })),
           },
         },
-        include: { items: true },
+        include: { items: true, cancelledReceipt: { select: { id: true, receiptNumber: true } } },
       });
     });
 
     void signReceiptNow(cancelReceipt.id, tenantId);
 
-    return toReceiptResponse(cancelReceipt as ReceiptWithItems);
+    return toReceiptResponse(cancelReceipt as ReceiptWithItemsAndStorno);
   }
 
   /** Nullbeleg erstellen (RKSV-Test) */
@@ -338,32 +369,34 @@ export class ReceiptsService {
     type: 'null_receipt' | 'training' | 'closing_receipt',
     cashRegisterId = 'KASSE-01',
   ) {
-    const year = new Date().getFullYear();
-    const last = await prisma.receipt.findFirst({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      select: { receiptNumber: true },
-    });
-    let nextNum = 1;
-    if (last?.receiptNumber) {
-      const parts = last.receiptNumber.split('-');
-      nextNum = parseInt(parts[parts.length - 1] ?? '0', 10) + 1;
-    }
+    const receipt = await withSerializableRetry(async (tx) => {
+      const year = new Date().getFullYear();
+      const last = await tx.receipt.findFirst({
+        where: { tenantId },
+        orderBy: { receiptNumber: 'desc' },
+        select: { receiptNumber: true },
+      });
+      let nextNum = 1;
+      if (last?.receiptNumber) {
+        const parts = last.receiptNumber.split('-');
+        nextNum = parseInt(parts[parts.length - 1] ?? '0', 10) + 1;
+      }
 
-    const receipt = await prisma.receipt.create({
-      data: {
-        tenantId,
-        receiptNumber: `${year}-${String(nextNum).padStart(6, '0')}`,
-        cashRegisterId,
-        type,
-        status: 'pending',
-        cashierId,
-        channel: 'direct',
-        paymentMethod: 'cash',
-        amountPaid: 0, change: 0, tip: 0,
-        subtotalNet: 0, vat0: 0, vat10: 0, vat13: 0, vat20: 0, totalVat: 0, totalGross: 0,
-      },
-      include: { items: true },
+      return tx.receipt.create({
+        data: {
+          tenantId,
+          receiptNumber: `${year}-${String(nextNum).padStart(6, '0')}`,
+          cashRegisterId,
+          type,
+          status: 'pending',
+          cashierId,
+          channel: 'direct',
+          paymentMethod: 'cash',
+          amountPaid: 0, change: 0, tip: 0,
+          subtotalNet: 0, vat0: 0, vat10: 0, vat13: 0, vat20: 0, totalVat: 0, totalGross: 0,
+        },
+        include: { items: true },
+      });
     });
 
     void signReceiptNow(receipt.id, tenantId);

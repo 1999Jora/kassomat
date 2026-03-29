@@ -340,6 +340,9 @@ model Receipt {
   rksv_signedAt               DateTime?
   rksv_atCertificateSerial    String?
 
+  // Storno: Referenz auf den stornierten Originalbeleg
+  cancelledReceiptId String?
+
   // Relations
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   cashier      User          @relation(fields: [cashierId], references: [id])
@@ -347,6 +350,8 @@ model Receipt {
   depEntry     DEPEntry?
   printJobs     PrintJob[]
   incomingOrder IncomingOrder? @relation(fields: [incomingOrderId], references: [id])
+  cancelledReceipt  Receipt?  @relation("StornoReference", fields: [cancelledReceiptId], references: [id])
+  cancellations     Receipt[] @relation("StornoReference")
 
   @@unique([tenantId, receiptNumber])
   @@index([tenantId])
