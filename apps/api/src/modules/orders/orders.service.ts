@@ -75,8 +75,9 @@ export class OrdersService {
   ) {
     const order = await this.findOwned(tenantId, orderId);
 
-    if (order.receipts.length > 0) {
-      throw new ValidationError('Für diese Bestellung wurde bereits ein Bon erstellt');
+    if (order.receipts.length > 0 && order.receipts[0]) {
+      // Bereits existierenden Bon zurückgeben statt Fehler
+      return this.receiptsService.getById(tenantId, order.receipts[0].id);
     }
 
     // Online-bezahlte Bestellungen: Bon ohne RKSV (§ 131b BAO)

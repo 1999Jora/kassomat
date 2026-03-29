@@ -309,10 +309,8 @@ export default function OrderNotification({ onClose }: Props) {
       playSuccess();
       removePendingOrder(order.id);
     } catch (err) {
-      console.error('Order receipt failed, falling back to local PDF:', err);
-      // Fallback: lokaler jsPDF-Bon falls Server-Flow fehlschlägt
-      await printThermalReceipt(order);
-      removePendingOrder(order.id);
+      console.error('Order receipt failed:', err);
+      alert('Bon konnte nicht erstellt werden. Bitte erneut versuchen.');
     } finally {
       setPrinting(null);
     }
