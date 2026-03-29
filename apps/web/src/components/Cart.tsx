@@ -8,7 +8,7 @@ const CHANNEL_CONFIG: Record<string, { label: string; cls: string }> = {
 };
 
 export default function Cart() {
-  const { cartItems, cartChannel, updateQuantity, removeFromCart, clearCart } = useAppStore();
+  const { cartItems, cartChannel, updateQuantity, removeFromCart, clearCart, orderType, setOrderType, deliveryInfo, setDeliveryInfo } = useAppStore();
 
   const totals = cartItems.reduce(
     (acc, item) => {
@@ -70,6 +70,59 @@ export default function Cart() {
             </svg>
             Leeren
           </button>
+        )}
+      </div>
+
+      {/* Order type toggle */}
+      <div className="px-3 py-2 border-b border-white/[0.06] shrink-0">
+        <div className="grid grid-cols-2 gap-1 bg-white/[0.04] rounded-lg p-0.5">
+          <button
+            type="button"
+            onClick={() => setOrderType('dine_in')}
+            className={`min-h-[32px] rounded-md text-[11px] font-medium transition-all ${
+              orderType === 'dine_in'
+                ? 'bg-[#00e87a] text-black shadow-sm'
+                : 'text-[#6b7280] hover:text-white'
+            }`}
+          >
+            Im Haus
+          </button>
+          <button
+            type="button"
+            onClick={() => setOrderType('delivery')}
+            className={`min-h-[32px] rounded-md text-[11px] font-medium transition-all ${
+              orderType === 'delivery'
+                ? 'bg-[#00e87a] text-black shadow-sm'
+                : 'text-[#6b7280] hover:text-white'
+            }`}
+          >
+            Lieferung
+          </button>
+        </div>
+        {orderType === 'delivery' && (
+          <div className="mt-2 space-y-1.5">
+            <input
+              type="text"
+              placeholder="Name"
+              value={deliveryInfo.name}
+              onChange={(e) => setDeliveryInfo({ name: e.target.value })}
+              className="w-full bg-white/[0.05] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-[#6b7280] outline-none focus:border-[#00e87a]/40 transition-colors"
+            />
+            <input
+              type="text"
+              placeholder="Strasse + Nr."
+              value={deliveryInfo.street}
+              onChange={(e) => setDeliveryInfo({ street: e.target.value })}
+              className="w-full bg-white/[0.05] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-[#6b7280] outline-none focus:border-[#00e87a]/40 transition-colors"
+            />
+            <input
+              type="text"
+              placeholder="PLZ + Ort"
+              value={deliveryInfo.city}
+              onChange={(e) => setDeliveryInfo({ city: e.target.value })}
+              className="w-full bg-white/[0.05] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-[#6b7280] outline-none focus:border-[#00e87a]/40 transition-colors"
+            />
+          </div>
         )}
       </div>
 

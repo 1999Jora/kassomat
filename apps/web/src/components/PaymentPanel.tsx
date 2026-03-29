@@ -3,6 +3,7 @@ import { useAppStore } from '../store/useAppStore';
 import { formatCents } from '../lib/formatters';
 import NumPad from './NumPad';
 import api, { createReceipt, printReceiptById, getDigitalReceiptUrl, getPrintMode, waitForRksvSignature } from '../lib/api';
+import { printLieferbon } from '../lib/print-lieferbon';
 import type { Receipt } from '@kassomat/types';
 import { io, Socket } from 'socket.io-client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -202,6 +203,8 @@ export default function PaymentPanel() {
     cardPaymentState,
     setCardPaymentState,
     setMobileTab,
+    orderType,
+    deliveryInfo,
   } = useAppStore();
   const queryClient = useQueryClient();
 
@@ -357,6 +360,11 @@ export default function PaymentPanel() {
   // ── Wait for RKSV, then print ─────────────────────────────────────────────────
 
   async function waitAndPrint(receiptId: string, pdfWindow?: Window | null) {
+    // Lieferbon-Daten vor clearCart sichern
+    const isDelivery = orderType === 'delivery';
+    const deliveryCopy = isDelivery ? { ...deliveryInfo } : null;
+    const itemsCopy = isDelivery ? [...cartItems] : null;
+
     // Wait for RKSV signature (shows spinner in SuccessScreen)
     await waitForRksvSignature(receiptId);
     setSigned(true);
@@ -376,6 +384,11 @@ export default function PaymentPanel() {
       } else {
         window.open(url, '_blank', 'noopener');
       }
+    }
+
+    // Bei Lieferung: zusätzlich Lieferbon drucken (kein RKSV, "Keine Rechnung")
+    if (isDelivery && deliveryCopy && itemsCopy) {
+      void printLieferbon(itemsCopy, deliveryCopy);
     }
 
     // After print/pdf, clear cart after short delay

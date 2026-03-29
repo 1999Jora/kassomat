@@ -10,11 +10,21 @@ export interface CartItem {
   discount: number; // cents
 }
 
+export interface DeliveryInfo {
+  name: string;
+  street: string;
+  city: string;
+}
+
 interface AppState {
   // Cart
   cartItems: CartItem[];
   cartChannel: 'direct' | 'lieferando' | 'wix';
   cartExternalOrderId: string | null;
+  orderType: 'dine_in' | 'delivery';
+  deliveryInfo: DeliveryInfo;
+  setOrderType: (type: 'dine_in' | 'delivery') => void;
+  setDeliveryInfo: (info: Partial<DeliveryInfo>) => void;
   addToCart: (item: Omit<CartItem, 'quantity' | 'discount'>) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   removeFromCart: (productId: string) => void;
@@ -56,6 +66,10 @@ export const useAppStore = create<AppState>((set) => ({
   cartItems: [],
   cartChannel: 'direct',
   cartExternalOrderId: null,
+  orderType: 'dine_in',
+  deliveryInfo: { name: '', street: '', city: '' },
+  setOrderType: (type) => set({ orderType: type }),
+  setDeliveryInfo: (info) => set((state) => ({ deliveryInfo: { ...state.deliveryInfo, ...info } })),
   addToCart: (item) =>
     set((state) => {
       const existing = state.cartItems.find((i) => i.productId === item.productId);
@@ -77,7 +91,7 @@ export const useAppStore = create<AppState>((set) => ({
     })),
   removeFromCart: (productId) =>
     set((state) => ({ cartItems: state.cartItems.filter((i) => i.productId !== productId) })),
-  clearCart: () => set({ cartItems: [], cartExternalOrderId: null, cartChannel: 'direct' }),
+  clearCart: () => set({ cartItems: [], cartExternalOrderId: null, cartChannel: 'direct', orderType: 'dine_in', deliveryInfo: { name: '', street: '', city: '' } }),
 
   paymentMethod: 'cash',
   setPaymentMethod: (m) => set({ paymentMethod: m }),
