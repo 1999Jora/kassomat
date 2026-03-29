@@ -467,11 +467,23 @@ export default function PaymentPanel() {
       if (!receiptId) return;
       setStornoState('loading');
       cancelReceipt(receiptId)
-        .then(() => {
+        .then(async (stornoReceipt) => {
           setStornoState('done');
           toast.success('Bon storniert');
           void queryClient.invalidateQueries({ queryKey: ['receipts-recent'] });
           void queryClient.invalidateQueries({ queryKey: ['analytics'] });
+          // Storno-Beleg automatisch drucken/anzeigen
+          try {
+            await waitForRksvSignature(stornoReceipt.id);
+            const mode = getPrintMode();
+            if (mode === 'printer') {
+              await printReceiptById(stornoReceipt.id);
+            } else if (mode === 'pdf') {
+              window.open(getDigitalReceiptUrl(stornoReceipt.id), '_blank', 'noopener');
+            }
+          } catch {
+            toast.error('Stornobeleg konnte nicht gedruckt werden');
+          }
         })
         .catch(() => {
           toast.error('Storno fehlgeschlagen');

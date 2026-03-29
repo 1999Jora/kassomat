@@ -5,7 +5,7 @@ import { de } from 'date-fns/locale';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import type { AnalyticsData, Receipt } from '@kassomat/types';
-import api, { cancelReceipt } from '../lib/api';
+import api, { cancelReceipt, waitForRksvSignature, printReceiptById, getDigitalReceiptUrl, getPrintMode } from '../lib/api';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -133,10 +133,22 @@ function StornoButton({ receiptId, onSuccess }: { receiptId: string; onSuccess: 
       if (timerRef.current) clearTimeout(timerRef.current);
       setState('loading');
       try {
-        await cancelReceipt(receiptId);
+        const stornoReceipt = await cancelReceipt(receiptId);
         toast.success('Bon storniert');
         onSuccess();
         setState('idle');
+        // Storno-Beleg automatisch drucken/anzeigen
+        try {
+          await waitForRksvSignature(stornoReceipt.id);
+          const mode = getPrintMode();
+          if (mode === 'printer') {
+            await printReceiptById(stornoReceipt.id);
+          } else if (mode === 'pdf') {
+            window.open(getDigitalReceiptUrl(stornoReceipt.id), '_blank', 'noopener');
+          }
+        } catch {
+          toast.error('Stornobeleg konnte nicht gedruckt werden');
+        }
       } catch {
         toast.error('Storno fehlgeschlagen');
         setState('idle');
