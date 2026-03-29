@@ -302,8 +302,14 @@ export default function OrderNotification({ onClose }: Props) {
 
       if (mode === 'printer') {
         await printReceiptById(receiptId);
-      } else if (mode === 'pdf' && pdfWindow) {
-        pdfWindow.location.href = getDigitalReceiptUrl(receiptId);
+      } else if (mode === 'pdf') {
+        const url = getDigitalReceiptUrl(receiptId);
+        // Navigate pre-opened window; fallback to new window (noopener returns null in Chrome)
+        if (pdfWindow && !pdfWindow.closed) {
+          pdfWindow.location.href = url;
+        } else {
+          window.open(url, '_blank', 'noopener');
+        }
       }
 
       playSuccess();
