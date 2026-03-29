@@ -14,7 +14,6 @@ import HomeScreen from './pages/HomeScreen';
 import DriverNavPage from './pages/DriverNavPage';
 import DispatcherPage from './pages/DispatcherPage';
 import DriversPage from './pages/DriversPage';
-import BonConfigPage from './pages/BonConfigPage';
 import { Toaster } from 'react-hot-toast';
 import { useAppStore } from './store/useAppStore';
 import { useRealtimeOrders } from './hooks/useRealtimeOrders';
@@ -94,11 +93,6 @@ function AnimatedRoutes() {
           <Route path="/drivers" element={
             <ProtectedRoute>
               <AdminLayout><DriversPage /></AdminLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/bon-config" element={
-            <ProtectedRoute>
-              <BonConfigPage />
             </ProtectedRoute>
           } />
 

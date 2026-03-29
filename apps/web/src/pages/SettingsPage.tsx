@@ -94,7 +94,7 @@ function Toggle({
 
 // ─── Tab types ────────────────────────────────────────────────────────────────
 
-type Tab = 'general' | 'atrust' | 'fiskaltrust' | 'lieferando' | 'wix' | 'mypos' | 'printer' | 'categories' | 'articles';
+type Tab = 'general' | 'atrust' | 'fiskaltrust' | 'lieferando' | 'wix' | 'mypos' | 'printer' | 'bon-layout' | 'categories' | 'articles';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'general', label: 'Allgemein' },
@@ -104,6 +104,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'wix', label: 'Wix' },
   { id: 'mypos', label: 'myPOS' },
   { id: 'printer', label: 'Drucker' },
+  { id: 'bon-layout', label: 'Bon-Layout' },
   { id: 'categories', label: 'Kategorien' },
   { id: 'articles', label: 'Artikel / MwSt' },
 ];
@@ -1433,6 +1434,226 @@ function ArticlesTab() {
   );
 }
 
+// ─── Bon-Layout tab ──────────────────────────────────────────────────────────
+
+const BON_W = 42;
+
+function bonPad(left: string, right: string, width = BON_W) {
+  const gap = width - left.length - right.length;
+  return left + (gap > 0 ? ' '.repeat(gap) : ' ') + right;
+}
+function bonCenter(text: string, width = BON_W) {
+  const gap = width - text.length;
+  if (gap <= 0) return text;
+  return ' '.repeat(Math.floor(gap / 2)) + text;
+}
+function bonDivider(char = '-', width = BON_W) {
+  return char.repeat(width);
+}
+function bonFmtEuro(cents: number) {
+  const e = Math.floor(Math.abs(cents) / 100);
+  const c = Math.abs(cents) % 100;
+  return `${cents < 0 ? '-' : ''}€${e},${String(c).padStart(2, '0')}`;
+}
+function bonFmtDate() {
+  const now = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(now.getDate())}.${p(now.getMonth() + 1)}.${now.getFullYear()} ${p(now.getHours())}:${p(now.getMinutes())}`;
+}
+
+const BON_MOCK_ITEMS = [
+  { name: 'Coca Cola 0,5l', qty: 2, price: 299, vat: 20 },
+  { name: 'Red Bull 0,25l', qty: 1, price: 249, vat: 20 },
+  { name: 'Chips Paprika', qty: 1, price: 199, vat: 10 },
+  { name: 'Manner Schnitten', qty: 3, price: 149, vat: 10 },
+];
+
+interface BonLine { text: string; bold?: boolean; big?: boolean; center?: boolean }
+
+function BonPreview({ lines }: { lines: BonLine[] }) {
+  return (
+    <div className="bg-white text-black rounded shadow-lg overflow-hidden inline-block">
+      <div className="px-4 py-5 font-mono text-[11px] leading-[1.6] whitespace-pre" style={{ width: `${BON_W * 7.2 + 32}px` }}>
+        {lines.map((line, i) => {
+          let text = line.center ? bonCenter(line.text) : line.text;
+          if (!text && !line.text) text = '\u00A0';
+          return (
+            <div key={i} className={line.bold ? 'font-bold' : ''} style={line.big ? { fontSize: '16px', lineHeight: '1.8' } : undefined}>
+              {text}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function BonLayoutTab({ tenant }: { tenant: Tenant }) {
+  const [bonTab, setBonTab] = useState<'rechnung' | 'lieferbon'>('rechnung');
+
+  // Rechnung config
+  const tenantName = tenant.name;
+  const address = tenant.settings.address ?? '';
+  const city = tenant.settings.city ?? '';
+  const vatNumber = tenant.settings.vatNumber ?? '';
+  const footer = tenant.settings.receiptFooter ?? 'Danke fuer Ihren Besuch!';
+  const [showQr, setShowQr] = useState(true);
+  const [showDemo, setShowDemo] = useState(true);
+
+  // Lieferbon config
+  const [lieferTitle, setLieferTitle] = useState('LIEFERBON');
+  const [showTenantOnLiefer, setShowTenantOnLiefer] = useState(true);
+  const [showAddress, setShowAddress] = useState(true);
+  const [showPrices, setShowPrices] = useState(true);
+
+  const items = BON_MOCK_ITEMS;
+  const totalGross = items.reduce((s, i) => s + i.price * i.qty, 0);
+  const vat20 = items.filter(i => i.vat === 20).reduce((s, i) => s + Math.round(i.price * i.qty * 20 / 120), 0);
+  const vat10 = items.filter(i => i.vat === 10).reduce((s, i) => s + Math.round(i.price * i.qty * 10 / 110), 0);
+  const totalNet = totalGross - vat20 - vat10;
+
+  // Build Rechnung lines
+  const rechnungLines: BonLine[] = [];
+  rechnungLines.push({ text: tenantName, bold: true, big: true, center: true });
+  if (address) rechnungLines.push({ text: address, center: true });
+  if (city) rechnungLines.push({ text: city, center: true });
+  if (vatNumber) rechnungLines.push({ text: `UID: ${vatNumber}`, center: true });
+  rechnungLines.push({ text: '' });
+  rechnungLines.push({ text: bonPad('Bon-Nr.:', '2026-000042') });
+  rechnungLines.push({ text: bonPad('Kasse:', 'KASSE-01') });
+  rechnungLines.push({ text: bonPad('Datum:', bonFmtDate()) });
+  rechnungLines.push({ text: bonPad('Kassierer:', 'Max M.') });
+  rechnungLines.push({ text: bonPad('Belegnr.:', '2026-000042') });
+  rechnungLines.push({ text: bonPad('RK-ID:', 'KASSE-01') });
+  rechnungLines.push({ text: bonDivider() });
+  for (const item of items) {
+    rechnungLines.push({ text: bonPad(item.name, bonFmtEuro(item.price * item.qty)) });
+    rechnungLines.push({ text: bonPad(`  ${item.qty}x ${bonFmtEuro(item.price)}`, `MwSt ${item.vat}%`) });
+  }
+  rechnungLines.push({ text: bonDivider() });
+  rechnungLines.push({ text: bonPad('Netto:', bonFmtEuro(totalNet)) });
+  if (vat10 > 0) rechnungLines.push({ text: bonPad('MwSt 10%:', bonFmtEuro(vat10)) });
+  if (vat20 > 0) rechnungLines.push({ text: bonPad('MwSt 20%:', bonFmtEuro(vat20)) });
+  rechnungLines.push({ text: bonPad('GESAMT:', bonFmtEuro(totalGross)), bold: true });
+  rechnungLines.push({ text: bonDivider() });
+  rechnungLines.push({ text: bonPad('Zahlungsart:', 'Bargeld') });
+  rechnungLines.push({ text: bonPad('Bezahlt:', bonFmtEuro(2000)) });
+  rechnungLines.push({ text: bonPad('Wechselgeld:', bonFmtEuro(2000 - totalGross)) });
+  if (showQr) {
+    rechnungLines.push({ text: '' });
+    rechnungLines.push({ text: 'RKSV-Signatur', center: true });
+    rechnungLines.push({ text: '[  QR-CODE  ]', center: true, bold: true });
+    rechnungLines.push({ text: '' });
+  }
+  rechnungLines.push({ text: bonDivider() });
+  rechnungLines.push({ text: footer, center: true });
+  if (showDemo) {
+    rechnungLines.push({ text: '' });
+    rechnungLines.push({ text: '*** DEMO-SIGNATUR ***', center: true, bold: true });
+  }
+
+  // Build Lieferbon lines
+  const lieferbonLines: BonLine[] = [];
+  lieferbonLines.push({ text: '*** KEINE RECHNUNG ***', bold: true, center: true });
+  lieferbonLines.push({ text: lieferTitle, bold: true, big: true, center: true });
+  if (showTenantOnLiefer) lieferbonLines.push({ text: tenantName, bold: true, center: true });
+  lieferbonLines.push({ text: bonDivider('=') });
+  lieferbonLines.push({ text: `Datum: ${bonFmtDate()}` });
+  lieferbonLines.push({ text: '' });
+  if (showAddress) {
+    lieferbonLines.push({ text: bonDivider('-') });
+    lieferbonLines.push({ text: 'LIEFERADRESSE:', bold: true });
+    lieferbonLines.push({ text: '  Max Mustermann', bold: true });
+    lieferbonLines.push({ text: '  Testgasse 1/3' });
+    lieferbonLines.push({ text: '  6020 Innsbruck' });
+    lieferbonLines.push({ text: '' });
+  }
+  lieferbonLines.push({ text: bonDivider('=') });
+  for (const item of items) {
+    if (showPrices) {
+      lieferbonLines.push({ text: bonPad(`${item.qty}x ${item.name}`, bonFmtEuro(item.price * item.qty)) });
+    } else {
+      lieferbonLines.push({ text: `${item.qty}x ${item.name}` });
+    }
+  }
+  if (showPrices) {
+    lieferbonLines.push({ text: bonDivider('=') });
+    lieferbonLines.push({ text: bonPad('GESAMT', bonFmtEuro(totalGross)), bold: true });
+  }
+  lieferbonLines.push({ text: bonDivider('=') });
+  lieferbonLines.push({ text: '*** KEINE RECHNUNG ***', bold: true, center: true });
+
+  return (
+    <div>
+      <h2 className="text-white font-semibold text-lg mb-1">Bon-Layout</h2>
+      <p className="text-white/40 text-sm mb-4">Vorschau wie Rechnung und Lieferbon auf dem 80mm Bondrucker aussehen (42 Zeichen, Monospace, s/w).</p>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-1 bg-[#080a0c] border border-white/5 rounded-lg p-0.5 mb-6 w-fit">
+        <button
+          type="button"
+          onClick={() => setBonTab('rechnung')}
+          className={clsx('px-4 py-1.5 rounded-md text-xs font-medium transition-colors',
+            bonTab === 'rechnung' ? 'bg-[#00e87a]/10 text-[#00e87a]' : 'text-white/50 hover:text-white/80'
+          )}
+        >
+          Rechnung
+        </button>
+        <button
+          type="button"
+          onClick={() => setBonTab('lieferbon')}
+          className={clsx('px-4 py-1.5 rounded-md text-xs font-medium transition-colors',
+            bonTab === 'lieferbon' ? 'bg-[#00e87a]/10 text-[#00e87a]' : 'text-white/50 hover:text-white/80'
+          )}
+        >
+          Lieferbon
+        </button>
+      </div>
+
+      <div className="flex flex-col xl:flex-row gap-6">
+        {/* Config */}
+        <div className="w-full xl:w-64 space-y-4 shrink-0">
+          {bonTab === 'rechnung' ? (
+            <>
+              <p className="text-xs text-white/40">Firmenname, Adresse und UID werden unter "Allgemein" konfiguriert.</p>
+              <div className="space-y-3">
+                <Toggle checked={showQr} onChange={setShowQr} labelOn="QR-Code ein" labelOff="QR-Code aus" />
+                <Toggle checked={showDemo} onChange={setShowDemo} labelOn="Demo-Banner ein" labelOff="Demo-Banner aus" />
+              </div>
+              <div className="text-[10px] text-white/30 space-y-0.5 pt-2 border-t border-white/5">
+                <p>80mm Papier = 42 Zeichen</p>
+                <p>Nur schwarz/weiss, Monospace</p>
+                <p>Formatierung: fett, doppelt, Ausrichtung</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <Field label="Titel">
+                <Input value={lieferTitle} onChange={(e) => setLieferTitle(e.target.value)} />
+              </Field>
+              <div className="space-y-3">
+                <Toggle checked={showTenantOnLiefer} onChange={setShowTenantOnLiefer} labelOn="Firmenname ein" labelOff="Firmenname aus" />
+                <Toggle checked={showAddress} onChange={setShowAddress} labelOn="Adresse ein" labelOff="Adresse aus" />
+                <Toggle checked={showPrices} onChange={setShowPrices} labelOn="Preise ein" labelOff="Preise aus" />
+              </div>
+              <div className="text-[10px] text-white/30 space-y-0.5 pt-2 border-t border-white/5">
+                <p>Kein RKSV QR-Code</p>
+                <p>"KEINE RECHNUNG" oben + unten</p>
+                <p>Nur fuer interne Lieferzwecke</p>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Preview */}
+        <div className="flex-1 flex justify-center bg-[#080a0c] rounded-xl border border-white/5 p-6 overflow-x-auto">
+          <BonPreview lines={bonTab === 'rechnung' ? rechnungLines : lieferbonLines} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -1496,6 +1717,7 @@ export default function SettingsPage() {
         {activeTab === 'wix' && <WixTab settings={tenant.settings} />}
         {activeTab === 'mypos' && <MyPOSTab settings={tenant.settings} />}
         {activeTab === 'printer' && <PrinterTab settings={tenant.settings} />}
+        {activeTab === 'bon-layout' && <BonLayoutTab tenant={tenant} />}
         {activeTab === 'categories' && <CategoriesTab />}
         {activeTab === 'articles' && <ArticlesTab />}
       </div>
