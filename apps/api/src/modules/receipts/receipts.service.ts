@@ -1,6 +1,6 @@
 import { prisma } from '../../lib/prisma';
-import { rksvQueue } from '../../lib/queue';
 import { NotFoundError, ValidationError } from '../../lib/errors';
+import { signReceiptNow } from '../../lib/sign-receipt';
 import type { SalesChannel, PaymentMethod, VatRate } from '@kassomat/types';
 import type { Prisma } from '@prisma/client';
 
@@ -193,10 +193,7 @@ export class ReceiptsService {
       });
     });
 
-    await rksvQueue.add('sign_receipt', {
-      receiptId: receipt.id,
-      tenantId,
-    });
+    void signReceiptNow(receipt.id, tenantId);
 
     return toReceiptResponse(receipt);
   }
@@ -314,7 +311,7 @@ export class ReceiptsService {
       });
     });
 
-    await rksvQueue.add('sign_receipt', { receiptId: cancelReceipt.id, tenantId });
+    void signReceiptNow(cancelReceipt.id, tenantId);
 
     return toReceiptResponse(cancelReceipt as ReceiptWithItems);
   }
@@ -369,7 +366,7 @@ export class ReceiptsService {
       include: { items: true },
     });
 
-    await rksvQueue.add('sign_receipt', { receiptId: receipt.id, tenantId });
+    void signReceiptNow(receipt.id, tenantId);
     return toReceiptResponse(receipt);
   }
 }
