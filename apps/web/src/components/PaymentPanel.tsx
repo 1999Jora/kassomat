@@ -466,6 +466,9 @@ export default function PaymentPanel() {
       const receiptId = lastReceiptIdRef.current;
       if (!receiptId) return;
       setStornoState('loading');
+      // Storno-Bon-Fenster VOR dem async call öffnen (Popup-Blocker!)
+      const mode = getPrintMode();
+      const stornoWindow = mode === 'pdf' ? window.open('', '_blank') : null;
       cancelReceipt(receiptId)
         .then(async (stornoReceipt) => {
           setStornoState('done');
@@ -475,17 +478,18 @@ export default function PaymentPanel() {
           // Storno-Beleg automatisch drucken/anzeigen
           try {
             await waitForRksvSignature(stornoReceipt.id);
-            const mode = getPrintMode();
             if (mode === 'printer') {
               await printReceiptById(stornoReceipt.id);
-            } else if (mode === 'pdf') {
-              window.open(getDigitalReceiptUrl(stornoReceipt.id), '_blank', 'noopener');
+            } else if (mode === 'pdf' && stornoWindow) {
+              stornoWindow.location.href = getDigitalReceiptUrl(stornoReceipt.id);
             }
           } catch {
+            if (stornoWindow) stornoWindow.close();
             toast.error('Stornobeleg konnte nicht gedruckt werden');
           }
         })
         .catch(() => {
+          if (stornoWindow) stornoWindow.close();
           toast.error('Storno fehlgeschlagen');
           setStornoState('idle');
         });

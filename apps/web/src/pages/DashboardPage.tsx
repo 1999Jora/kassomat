@@ -132,6 +132,9 @@ function StornoButton({ receiptId, onSuccess }: { receiptId: string; onSuccess: 
     if (state === 'confirm') {
       if (timerRef.current) clearTimeout(timerRef.current);
       setState('loading');
+      // Fenster VOR async call öffnen (Popup-Blocker!)
+      const mode = getPrintMode();
+      const stornoWindow = mode === 'pdf' ? window.open('', '_blank') : null;
       try {
         const stornoReceipt = await cancelReceipt(receiptId);
         toast.success('Bon storniert');
@@ -140,16 +143,17 @@ function StornoButton({ receiptId, onSuccess }: { receiptId: string; onSuccess: 
         // Storno-Beleg automatisch drucken/anzeigen
         try {
           await waitForRksvSignature(stornoReceipt.id);
-          const mode = getPrintMode();
           if (mode === 'printer') {
             await printReceiptById(stornoReceipt.id);
-          } else if (mode === 'pdf') {
-            window.open(getDigitalReceiptUrl(stornoReceipt.id), '_blank', 'noopener');
+          } else if (mode === 'pdf' && stornoWindow) {
+            stornoWindow.location.href = getDigitalReceiptUrl(stornoReceipt.id);
           }
         } catch {
+          if (stornoWindow) stornoWindow.close();
           toast.error('Stornobeleg konnte nicht gedruckt werden');
         }
       } catch {
+        if (stornoWindow) stornoWindow.close();
         toast.error('Storno fehlgeschlagen');
         setState('idle');
       }
