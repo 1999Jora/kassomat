@@ -139,6 +139,7 @@ model Tenant {
   city            String?
   vatNumber       String?
   receiptFooter   String?
+  logoBase64      String?   // Logo als Base64-encoded Data-URL (max ~500KB)
   printerIp       String?
   printerPort     Int?
   rksvEnabled     Boolean @default(true)

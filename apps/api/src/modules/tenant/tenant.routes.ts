@@ -108,4 +108,50 @@ export async function tenantRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.send({ success: true, data: tenant });
     },
   );
+
+  /** POST /tenant/logo — Logo hochladen (max 500KB, PNG/JPG) */
+  fastify.post(
+    '/tenant/logo',
+    { preHandler: [fastify.authenticate, requireRole('owner', 'admin')] },
+    async (request, reply) => {
+      const file = await request.file();
+      if (!file) return reply.code(400).send({ success: false, error: 'Keine Datei hochgeladen' });
+
+      const mimeType = file.mimetype;
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(mimeType)) {
+        return reply.code(400).send({ success: false, error: 'Nur PNG, JPG oder WebP erlaubt' });
+      }
+
+      const chunks: Buffer[] = [];
+      for await (const chunk of file.file) {
+        chunks.push(chunk);
+      }
+      const buffer = Buffer.concat(chunks);
+
+      if (buffer.length > 500 * 1024) {
+        return reply.code(400).send({ success: false, error: 'Logo darf maximal 500KB gross sein' });
+      }
+
+      const base64 = `data:${mimeType};base64,${buffer.toString('base64')}`;
+      await fastify.prisma.tenant.update({
+        where: { id: request.tenantId },
+        data: { logoBase64: base64 },
+      });
+
+      return reply.send({ success: true, data: { logoBase64: base64 } });
+    },
+  );
+
+  /** DELETE /tenant/logo — Logo entfernen */
+  fastify.delete(
+    '/tenant/logo',
+    { preHandler: [fastify.authenticate, requireRole('owner', 'admin')] },
+    async (request, reply) => {
+      await fastify.prisma.tenant.update({
+        where: { id: request.tenantId },
+        data: { logoBase64: null },
+      });
+      return reply.send({ success: true });
+    },
+  );
 }

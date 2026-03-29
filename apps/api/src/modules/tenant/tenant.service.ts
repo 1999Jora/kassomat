@@ -237,6 +237,7 @@ export class TenantService {
         city: tenant.city ?? null,
         vatNumber: tenant.vatNumber,
         receiptFooter: tenant.receiptFooter,
+        logoBase64: tenant.logoBase64 ?? null,
         printerIp: tenant.printerIp,
         printerPort: tenant.printerPort,
         rksvEnabled: tenant.rksvEnabled,

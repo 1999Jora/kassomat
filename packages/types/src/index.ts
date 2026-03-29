@@ -46,6 +46,8 @@ export interface TenantSettings {
   vatNumber: string | null;
   /** Fußzeile auf Bons (z.B. "Vielen Dank für Ihren Besuch!") */
   receiptFooter: string | null;
+  /** Logo als Base64 Data-URL für Bondrucker und Digital-Bon */
+  logoBase64: string | null;
   /** IP-Adresse des Netzwerkdruckers */
   printerIp: string | null;
   /** Port des Netzwerkdruckers (Standard: 9100) */

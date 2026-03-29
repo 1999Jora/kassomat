@@ -1479,7 +1479,9 @@ function BonPreview({ lines }: { lines: BonLine[] }) {
 }
 
 function BonLayoutTab({ tenant }: { tenant: Tenant }) {
+  const qc = useQueryClient();
   const [bonTab, setBonTab] = useState<'rechnung' | 'lieferbon'>('rechnung');
+  const [uploading, setUploading] = useState(false);
 
   // Rechnung config
   const tenantName = tenant.name;
@@ -1487,14 +1489,44 @@ function BonLayoutTab({ tenant }: { tenant: Tenant }) {
   const city = tenant.settings.city ?? '';
   const vatNumber = tenant.settings.vatNumber ?? '';
   const footer = tenant.settings.receiptFooter ?? 'Danke fuer Ihren Besuch!';
-  const [showQr, setShowQr] = useState(true);
-  const [showDemo, setShowDemo] = useState(true);
+  const logoBase64 = tenant.settings.logoBase64 ?? null;
 
   // Lieferbon config
   const [lieferTitle, setLieferTitle] = useState('LIEFERBON');
   const [showTenantOnLiefer, setShowTenantOnLiefer] = useState(true);
   const [showAddress, setShowAddress] = useState(true);
   const [showPrices, setShowPrices] = useState(true);
+
+  // Logo upload
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      await api.post('/tenant/logo', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      await qc.invalidateQueries({ queryKey: ['tenant'] });
+      toast.success('Logo hochgeladen');
+    } catch {
+      toast.error('Logo-Upload fehlgeschlagen (max 500KB, PNG/JPG/WebP)');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  }
+
+  async function handleLogoDelete() {
+    try {
+      await api.delete('/tenant/logo');
+      await qc.invalidateQueries({ queryKey: ['tenant'] });
+      toast.success('Logo entfernt');
+    } catch {
+      toast.error('Fehler beim Entfernen des Logos');
+    }
+  }
 
   const items = BON_MOCK_ITEMS;
   const totalGross = items.reduce((s, i) => s + i.price * i.qty, 0);
@@ -1504,6 +1536,7 @@ function BonLayoutTab({ tenant }: { tenant: Tenant }) {
 
   // Build Rechnung lines
   const rechnungLines: BonLine[] = [];
+  if (logoBase64) rechnungLines.push({ text: '[ LOGO ]', center: true, bold: true });
   rechnungLines.push({ text: tenantName, bold: true, big: true, center: true });
   if (address) rechnungLines.push({ text: address, center: true });
   if (city) rechnungLines.push({ text: city, center: true });
@@ -1529,18 +1562,13 @@ function BonLayoutTab({ tenant }: { tenant: Tenant }) {
   rechnungLines.push({ text: bonPad('Zahlungsart:', 'Bargeld') });
   rechnungLines.push({ text: bonPad('Bezahlt:', bonFmtEuro(2000)) });
   rechnungLines.push({ text: bonPad('Wechselgeld:', bonFmtEuro(2000 - totalGross)) });
-  if (showQr) {
-    rechnungLines.push({ text: '' });
-    rechnungLines.push({ text: 'RKSV-Signatur', center: true });
-    rechnungLines.push({ text: '[  QR-CODE  ]', center: true, bold: true });
-    rechnungLines.push({ text: '' });
-  }
+  // RKSV QR-Code ist Pflicht — immer anzeigen
+  rechnungLines.push({ text: '' });
+  rechnungLines.push({ text: 'RKSV-Signatur', center: true });
+  rechnungLines.push({ text: '[  QR-CODE  ]', center: true, bold: true });
+  rechnungLines.push({ text: '' });
   rechnungLines.push({ text: bonDivider() });
   rechnungLines.push({ text: footer, center: true });
-  if (showDemo) {
-    rechnungLines.push({ text: '' });
-    rechnungLines.push({ text: '*** DEMO-SIGNATUR ***', center: true, bold: true });
-  }
 
   // Build Lieferbon lines
   const lieferbonLines: BonLine[] = [];
@@ -1605,15 +1633,28 @@ function BonLayoutTab({ tenant }: { tenant: Tenant }) {
         <div className="w-full xl:w-64 space-y-4 shrink-0">
           {bonTab === 'rechnung' ? (
             <>
-              <p className="text-xs text-white/40">Firmenname, Adresse und UID werden unter "Allgemein" konfiguriert.</p>
-              <div className="space-y-3">
-                <Toggle checked={showQr} onChange={setShowQr} labelOn="QR-Code ein" labelOff="QR-Code aus" />
-                <Toggle checked={showDemo} onChange={setShowDemo} labelOn="Demo-Banner ein" labelOff="Demo-Banner aus" />
+              <p className="text-xs text-white/40">Firmenname, Adresse und UID werden unter &quot;Allgemein&quot; konfiguriert.</p>
+              {/* Logo Upload */}
+              <div className="space-y-2">
+                <label className="text-xs text-white/60 font-medium">Logo</label>
+                {logoBase64 ? (
+                  <div className="flex items-center gap-3">
+                    <img src={logoBase64} alt="Logo" className="h-10 w-10 object-contain rounded bg-white/5 p-0.5" />
+                    <button type="button" onClick={handleLogoDelete} className="text-xs text-red-400 hover:text-red-300">Entfernen</button>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-white/30">Kein Logo hochgeladen</p>
+                )}
+                <label className={clsx('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer transition-colors', uploading ? 'bg-white/5 text-white/30' : 'bg-white/10 text-white/70 hover:bg-white/15')}>
+                  <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleLogoUpload} disabled={uploading} className="hidden" />
+                  {uploading ? 'Lädt...' : 'Logo hochladen'}
+                </label>
+                <p className="text-[10px] text-white/20">Max 500KB, PNG/JPG/WebP</p>
               </div>
               <div className="text-[10px] text-white/30 space-y-0.5 pt-2 border-t border-white/5">
+                <p>QR-Code ist RKSV-Pflicht (immer aktiv)</p>
                 <p>80mm Papier = 42 Zeichen</p>
                 <p>Nur schwarz/weiss, Monospace</p>
-                <p>Formatierung: fett, doppelt, Ausrichtung</p>
               </div>
             </>
           ) : (
