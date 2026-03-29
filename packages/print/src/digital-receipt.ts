@@ -1,9 +1,8 @@
 /**
  * @kassomat/print — Digital Receipt Generator
  *
- * Generates a full HTML document suitable for email delivery or web display.
- * The layout mirrors the thermal receipt: header, items, totals, VAT breakdown,
- * payment, RKSV QR code, footer.
+ * Generates a full HTML document that looks like a real 80mm thermal printer
+ * receipt: monospace font, 42 characters wide, black on white, centered.
  *
  * All money values are in cents; divide by 100 for euro display.
  * Dates are formatted in Austrian locale: DD.MM.YYYY HH:MM
@@ -13,33 +12,29 @@ import QRCode from 'qrcode';
 import type { ReceiptData, TenantInfo } from './types';
 
 // ============================================================
-// Formatting helpers (duplicated from receipt-printer to keep
-// digital-receipt.ts self-contained with no internal imports)
+// Formatting helpers
 // ============================================================
 
+const W = 42; // 80mm thermal = 42 chars
+
 /** Format a cent integer as a euro string, e.g. 250 → "€2,50" */
-function formatEuro(cents: number): string {
+function fmtEuro(cents: number): string {
   const negative = cents < 0;
   const abs = Math.abs(cents);
   const euros = Math.floor(abs / 100);
   const centsPart = abs % 100;
-  const formatted = `€${euros},${String(centsPart).padStart(2, '0')}`;
+  const formatted = `${euros},${String(centsPart).padStart(2, '0')}`;
   return negative ? `-${formatted}` : formatted;
 }
 
 /** Format a Date as Austrian DD.MM.YYYY HH:MM */
-function formatAustrianDate(date: Date): string {
+function fmtDate(date: Date): string {
   const pad = (n: number): string => String(n).padStart(2, '0');
-  const dd = pad(date.getDate());
-  const mm = pad(date.getMonth() + 1);
-  const yyyy = date.getFullYear();
-  const hh = pad(date.getHours());
-  const min = pad(date.getMinutes());
-  return `${dd}.${mm}.${yyyy} ${hh}:${min}`;
+  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 /** Translate payment method to German label */
-function paymentMethodLabel(method: string): string {
+function paymentLabel(method: string): string {
   switch (method) {
     case 'cash':   return 'Bargeld';
     case 'card':   return 'Karte';
@@ -58,143 +53,120 @@ function esc(text: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/** Center text within W chars */
+function center(text: string): string {
+  if (text.length >= W) return text.substring(0, W);
+  const pad = Math.floor((W - text.length) / 2);
+  return ' '.repeat(pad) + text;
+}
+
+/** Left-right justified within W chars */
+function leftRight(left: string, right: string): string {
+  const gap = W - left.length - right.length;
+  if (gap < 1) return (left + ' ' + right).substring(0, W);
+  return left + ' '.repeat(gap) + right;
+}
+
+/** Divider line */
+function divider(char = '-'): string {
+  return char.repeat(W);
+}
+
 // ============================================================
 // HTML Generator
 // ============================================================
 
-/**
- * Generate a full HTML document representing the digital receipt.
- * The HTML is self-contained with inline styles for email client compatibility.
- *
- * @param receipt  Structured receipt data
- * @param tenant   Tenant info for the receipt header
- * @returns        Complete HTML document string
- */
 export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: TenantInfo): Promise<string> {
-  // Build item rows HTML
-  const itemRows = receipt.items.map((item) => {
-    const lineTotal = formatEuro(item.totalGross);
-    const unitPrice = formatEuro(item.unitPrice);
-    const discountRow = item.discount > 0
-      ? `<tr>
-           <td style="padding:2px 8px 2px 24px;color:#666;font-size:13px;" colspan="3">Rabatt</td>
-           <td style="padding:2px 8px 2px 0;text-align:right;color:#e53e3e;font-size:13px;">-${esc(formatEuro(item.discount))}</td>
-         </tr>`
-      : '';
-    return `
-      <tr>
-        <td style="padding:6px 8px 2px 0;font-weight:600;">${esc(item.productName)}</td>
-        <td style="padding:6px 0 2px 0;text-align:right;white-space:nowrap;">${esc(String(item.quantity))}×${esc(unitPrice)}</td>
-        <td style="padding:6px 8px 2px 8px;color:#888;font-size:12px;text-align:center;">MwSt ${item.vatRate}%</td>
-        <td style="padding:6px 0 2px 0;text-align:right;font-weight:600;white-space:nowrap;">${esc(lineTotal)}</td>
-      </tr>
-      ${discountRow}
-    `;
-  }).join('');
+  const lines: Array<{ text: string; bold?: boolean; big?: boolean }> = [];
 
-  // Build VAT breakdown rows
-  const vatRows: string[] = [];
-  if (receipt.totals.vat0 > 0) {
-    vatRows.push(`
-      <tr>
-        <td style="padding:3px 0;color:#555;">MwSt 0%</td>
-        <td style="padding:3px 0;text-align:right;color:#555;">${esc(formatEuro(receipt.totals.vat0))}</td>
-      </tr>`);
+  const isDemoSigning = receipt.rksvCertSerial === 'AT0-DEMO';
+
+  // Header
+  lines.push({ text: center(tenant.name.toUpperCase()), bold: true, big: true });
+  if (tenant.address) lines.push({ text: center(tenant.address) });
+  if (tenant.city) lines.push({ text: center(tenant.city) });
+  if (tenant.vatNumber) lines.push({ text: center(`UID: ${tenant.vatNumber}`) });
+  lines.push({ text: '' });
+
+  // Meta
+  lines.push({ text: leftRight('Bon-Nr.:', receipt.receiptNumber) });
+  lines.push({ text: leftRight('Kasse:', receipt.cashRegisterId) });
+  lines.push({ text: leftRight('Datum:', fmtDate(receipt.createdAt)) });
+  lines.push({ text: leftRight('Kassierer:', receipt.cashierName) });
+  if (receipt.rksvBelegnummer) lines.push({ text: leftRight('Belegnr.:', receipt.rksvBelegnummer) });
+  if (receipt.rksvRegistrierkasseId) lines.push({ text: leftRight('RK-ID:', receipt.rksvRegistrierkasseId) });
+  lines.push({ text: divider() });
+
+  // Items
+  for (const item of receipt.items) {
+    const total = fmtEuro(item.totalGross);
+    const name = item.productName.length > W - total.length - 1
+      ? item.productName.substring(0, W - total.length - 2) + '.'
+      : item.productName;
+    lines.push({ text: leftRight(name, total), bold: true });
+    lines.push({ text: `  ${item.quantity}x ${fmtEuro(item.unitPrice)}    MwSt ${item.vatRate}%` });
+    if (item.discount > 0) {
+      lines.push({ text: leftRight('  Rabatt', `-${fmtEuro(item.discount)}`) });
+    }
   }
-  if (receipt.totals.vat10 > 0) {
-    vatRows.push(`
-      <tr>
-        <td style="padding:3px 0;color:#555;">MwSt 10%</td>
-        <td style="padding:3px 0;text-align:right;color:#555;">${esc(formatEuro(receipt.totals.vat10))}</td>
-      </tr>`);
+  lines.push({ text: divider() });
+
+  // Totals
+  lines.push({ text: leftRight('Netto:', fmtEuro(receipt.totals.subtotalNet)) });
+  if (receipt.totals.vat0 > 0) lines.push({ text: leftRight('MwSt 0%:', fmtEuro(receipt.totals.vat0)) });
+  if (receipt.totals.vat10 > 0) lines.push({ text: leftRight('MwSt 10%:', fmtEuro(receipt.totals.vat10)) });
+  if (receipt.totals.vat13 > 0) lines.push({ text: leftRight('MwSt 13%:', fmtEuro(receipt.totals.vat13)) });
+  if (receipt.totals.vat20 > 0) lines.push({ text: leftRight('MwSt 20%:', fmtEuro(receipt.totals.vat20)) });
+  lines.push({ text: divider('=') });
+  lines.push({ text: leftRight('GESAMT:', fmtEuro(receipt.totals.totalGross)), bold: true, big: true });
+  lines.push({ text: divider() });
+
+  // Payment
+  lines.push({ text: leftRight('Zahlungsart:', paymentLabel(receipt.payment.method)) });
+  lines.push({ text: leftRight('Bezahlt:', fmtEuro(receipt.payment.amountPaid)) });
+  if (receipt.payment.method === 'cash' && receipt.payment.change > 0) {
+    lines.push({ text: leftRight('Wechselgeld:', fmtEuro(receipt.payment.change)) });
   }
-  if (receipt.totals.vat13 > 0) {
-    vatRows.push(`
-      <tr>
-        <td style="padding:3px 0;color:#555;">MwSt 13%</td>
-        <td style="padding:3px 0;text-align:right;color:#555;">${esc(formatEuro(receipt.totals.vat13))}</td>
-      </tr>`);
-  }
-  if (receipt.totals.vat20 > 0) {
-    vatRows.push(`
-      <tr>
-        <td style="padding:3px 0;color:#555;">MwSt 20%</td>
-        <td style="padding:3px 0;text-align:right;color:#555;">${esc(formatEuro(receipt.totals.vat20))}</td>
-      </tr>`);
+  if (receipt.payment.tip > 0) {
+    lines.push({ text: leftRight('Trinkgeld:', fmtEuro(receipt.payment.tip)) });
   }
 
-  // Payment section
-  const changeRow = receipt.payment.method === 'cash' && receipt.payment.change > 0
-    ? `<tr>
-         <td style="padding:3px 0;color:#555;">Wechselgeld</td>
-         <td style="padding:3px 0;text-align:right;color:#555;">${esc(formatEuro(receipt.payment.change))}</td>
-       </tr>`
-    : '';
+  // Build the lines HTML
+  const linesHtml = lines.map(l => {
+    const t = esc(l.text);
+    if (l.bold && l.big) return `<div class="line bold big">${t}</div>`;
+    if (l.bold) return `<div class="line bold">${t}</div>`;
+    return `<div class="line">${t}</div>`;
+  }).join('\n    ');
 
-  const tipRow = receipt.payment.tip > 0
-    ? `<tr>
-         <td style="padding:3px 0;color:#555;">Trinkgeld</td>
-         <td style="padding:3px 0;text-align:right;color:#555;">${esc(formatEuro(receipt.payment.tip))}</td>
-       </tr>`
-    : '';
-
-  // RKSV QR Code — als echtes SVG rendern
-  let rksvSection = '';
+  // RKSV QR Code
+  let qrHtml = '';
   if (receipt.rksvQrCodeData) {
     const qrSvg = await QRCode.toString(receipt.rksvQrCodeData, {
       type: 'svg',
-      width: 160,
+      width: 180,
       margin: 1,
-      color: { dark: '#1a202c', light: '#ffffff' },
+      color: { dark: '#000000', light: '#ffffff' },
     });
-    rksvSection = `<tr>
-       <td colspan="2" style="padding:20px 0 8px 0;text-align:center;">
-         <p style="margin:0 0 10px;font-size:12px;color:#888;letter-spacing:0.05em;text-transform:uppercase;">RKSV-Prüfcode</p>
-         <div style="display:inline-block;padding:8px;border:1px solid #e2e8f0;border-radius:4px;background:#fff;">
-           ${qrSvg}
-         </div>
-         <p style="margin:8px 0 0;font-size:9px;font-family:monospace;word-break:break-all;color:#aaa;max-width:320px;">${esc(receipt.rksvQrCodeData.substring(0, 60))}…</p>
-       </td>
-     </tr>`;
+    qrHtml = `
+    <div class="line" style="margin-top:8px;">${esc(center('RKSV-Signatur'))}</div>
+    <div style="text-align:center;margin:8px 0;">${qrSvg}</div>`;
   } else {
-    rksvSection = `<tr>
-       <td colspan="2" style="padding:16px 0 8px 0;text-align:center;">
-         <div style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border:1px solid #fed7aa;border-radius:8px;background:#fff7ed;">
-           <span style="font-size:16px;">⚠️</span>
-           <span style="font-size:12px;color:#9a3412;font-weight:600;">Keine Verbindung zum RKSV-Server</span>
-         </div>
-         <p style="margin:6px 0 0;font-size:11px;color:#aaa;">Die Signatur wird nachgeholt sobald die Verbindung wiederhergestellt ist.</p>
-       </td>
-     </tr>`;
+    qrHtml = `
+    <div class="line" style="margin-top:8px;">${esc(center('*** SIGNATUR AUSSTEHEND ***'))}</div>`;
   }
 
-  // Meta rows
-  const rksvMetaRows: string[] = [];
-  if (receipt.rksvBelegnummer) {
-    rksvMetaRows.push(`<tr>
-      <td style="padding:2px 0;font-size:12px;color:#888;">Belegnr.:</td>
-      <td style="padding:2px 0;font-size:12px;color:#888;text-align:right;">${esc(receipt.rksvBelegnummer)}</td>
-    </tr>`);
-  }
-  if (receipt.rksvRegistrierkasseId) {
-    rksvMetaRows.push(`<tr>
-      <td style="padding:2px 0;font-size:12px;color:#888;">RK-ID:</td>
-      <td style="padding:2px 0;font-size:12px;color:#888;text-align:right;">${esc(receipt.rksvRegistrierkasseId)}</td>
-    </tr>`);
-  }
+  // Footer
+  const footer = tenant.receiptFooter ?? 'Danke fuer Ihren Besuch!';
 
-  const footer = tenant.receiptFooter ?? 'Danke für Ihren Besuch!';
+  // Logo
+  const logoHtml = tenant.logoBase64
+    ? `<div style="text-align:center;margin-bottom:8px;"><img src="${tenant.logoBase64}" alt="" style="max-height:60px;max-width:240px;" /></div>`
+    : '';
 
-  const addressLines: string[] = [];
-  if (tenant.address) addressLines.push(`<div>${esc(tenant.address)}</div>`);
-  if (tenant.city) addressLines.push(`<div>${esc(tenant.city)}</div>`);
-  if (tenant.vatNumber) addressLines.push(`<div style="margin-top:4px;font-size:13px;color:#888;">UID: ${esc(tenant.vatNumber)}</div>`);
-
-  const isDemoSigning = receipt.rksvCertSerial === 'AT0-DEMO';
+  // Demo banner
   const demoBanner = isDemoSigning
-    ? `<div style="background:#d97706;color:#fff;text-align:center;padding:8px 16px;font-size:12px;font-weight:700;letter-spacing:0.05em;">
-        ⚠ DEMO-SIGNATUR — Keine rechtsgültige RKSV-Signatur
-      </div>`
+    ? `<div style="background:#000;color:#fff;text-align:center;padding:6px 0;font-family:'Courier New',Courier,monospace;font-size:12px;font-weight:700;letter-spacing:1px;">*** DEMO-SIGNATUR ***</div>`
     : '';
 
   return `<!DOCTYPE html>
@@ -202,190 +174,58 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Kassenbon ${esc(receipt.receiptNumber)} — ${esc(tenant.name)}</title>
+  <title>Kassenbon ${esc(receipt.receiptNumber)} - ${esc(tenant.name)}</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background: #f0f4f8;
-      color: #1a202c;
-      padding: 24px 16px;
-      font-size: 15px;
-      line-height: 1.5;
+      font-family: 'Courier New', Courier, monospace;
+      background: #e8e8e8;
+      color: #000;
+      padding: 20px 8px;
+      font-size: 13px;
+      line-height: 1.4;
     }
     .receipt {
-      max-width: 480px;
+      max-width: 380px;
       margin: 0 auto;
-      background: #ffffff;
-      border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08);
-      overflow: hidden;
+      background: #fff;
+      padding: 16px 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      border-radius: 2px;
     }
-    .receipt-header {
-      background: #1a202c;
-      color: #ffffff;
-      padding: 28px 24px 20px;
-      text-align: center;
-    }
-    .receipt-header h1 {
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: -0.01em;
-    }
-    .receipt-header .subtitle {
+    .line {
+      white-space: pre;
       font-size: 13px;
-      color: #a0aec0;
-      margin-top: 4px;
+      line-height: 1.5;
     }
-    .receipt-body {
-      padding: 0 24px;
-    }
-    .section {
-      padding: 16px 0;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .section:last-child {
-      border-bottom: none;
-    }
-    .meta-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
-    }
-    .meta-table td {
-      padding: 3px 0;
-    }
-    .meta-table td:last-child {
-      text-align: right;
-      font-weight: 500;
-    }
-    .items-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
-    }
-    .totals-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
-    }
-    .total-row td {
-      padding: 8px 0 4px;
-      font-size: 17px;
+    .line.bold {
       font-weight: 700;
-      border-top: 2px solid #1a202c;
     }
-    .receipt-footer {
-      background: #f7fafc;
-      padding: 20px 24px;
+    .line.big {
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    .footer {
       text-align: center;
-      font-size: 14px;
-      color: #718096;
-      border-top: 1px solid #e2e8f0;
-    }
-    .badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 12px;
-      background: #ebf8ff;
-      color: #2b6cb0;
+      margin-top: 8px;
       font-size: 12px;
-      font-weight: 600;
+      color: #666;
+    }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .receipt { box-shadow: none; max-width: 100%; padding: 0; }
     }
   </style>
 </head>
 <body>
   <div class="receipt">
-
     ${demoBanner}
-
-    <!-- Header -->
-    <div class="receipt-header">
-      ${tenant.logoBase64 ? `<div style="margin-bottom:12px;"><img src="${tenant.logoBase64}" alt="Logo" style="max-height:60px;max-width:200px;object-fit:contain;" /></div>` : ''}
-      <h1>${esc(tenant.name)}</h1>
-      <div class="subtitle">
-        ${addressLines.join('\n        ')}
-      </div>
-    </div>
-
-    <div class="receipt-body">
-
-      <!-- Receipt meta -->
-      <div class="section">
-        <table class="meta-table">
-          <tr>
-            <td style="color:#718096;">Bon-Nr.</td>
-            <td><span class="badge">${esc(receipt.receiptNumber)}</span></td>
-          </tr>
-          <tr>
-            <td style="color:#718096;">Kasse</td>
-            <td>${esc(receipt.cashRegisterId)}</td>
-          </tr>
-          <tr>
-            <td style="color:#718096;">Datum</td>
-            <td>${esc(formatAustrianDate(receipt.createdAt))}</td>
-          </tr>
-          <tr>
-            <td style="color:#718096;">Kassierer</td>
-            <td>${esc(receipt.cashierName)}</td>
-          </tr>
-          ${rksvMetaRows.join('\n          ')}
-        </table>
-      </div>
-
-      <!-- Items -->
-      <div class="section">
-        <table class="items-table">
-          ${itemRows}
-        </table>
-      </div>
-
-      <!-- Totals -->
-      <div class="section">
-        <table class="totals-table">
-          <tr>
-            <td style="padding:3px 0;color:#555;">Netto</td>
-            <td style="padding:3px 0;text-align:right;color:#555;">${esc(formatEuro(receipt.totals.subtotalNet))}</td>
-          </tr>
-          ${vatRows.join('\n          ')}
-          <tr class="total-row">
-            <td>Gesamt</td>
-            <td style="text-align:right;">${esc(formatEuro(receipt.totals.totalGross))}</td>
-          </tr>
-        </table>
-      </div>
-
-      <!-- Payment -->
-      <div class="section">
-        <table class="totals-table">
-          <tr>
-            <td style="padding:3px 0;color:#555;">Zahlungsart</td>
-            <td style="padding:3px 0;text-align:right;font-weight:600;">${esc(paymentMethodLabel(receipt.payment.method))}</td>
-          </tr>
-          <tr>
-            <td style="padding:3px 0;color:#555;">Bezahlt</td>
-            <td style="padding:3px 0;text-align:right;">${esc(formatEuro(receipt.payment.amountPaid))}</td>
-          </tr>
-          ${changeRow}
-          ${tipRow}
-        </table>
-      </div>
-
-      <!-- RKSV QR Code / Status -->
-      <div class="section">
-        <table class="totals-table">
-          ${rksvSection}
-        </table>
-      </div>
-
-    </div><!-- /receipt-body -->
-
-    <!-- Footer -->
-    <div class="receipt-footer">
-      <p>${esc(footer)}</p>
-      <p style="margin-top:8px;font-size:12px;color:#a0aec0;">Dieser Bon wurde elektronisch erstellt und ist ohne Unterschrift gültig.</p>
-    </div>
-
+    ${logoHtml}
+    ${linesHtml}
+    ${qrHtml}
+    <div class="line">${esc(divider())}</div>
+    <div class="line">${esc(center(footer))}</div>
+    <div class="footer" style="margin-top:16px;font-size:10px;color:#aaa;">Elektronisch erstellt</div>
   </div>
 </body>
 </html>`;
@@ -393,10 +233,6 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
 
 /**
  * Generate the URL for the digital receipt web page.
- *
- * @param receiptId  Receipt UUID
- * @param baseUrl    Base URL of the API server (no trailing slash)
- * @returns          Full URL to the digital receipt page
  */
 export function generateDigitalReceiptURL(receiptId: string, baseUrl: string): string {
   const base = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
