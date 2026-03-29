@@ -301,6 +301,7 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
 
     <!-- Header -->
     <div class="receipt-header">
+      ${tenant.logoBase64 ? `<div style="margin-bottom:12px;"><img src="${tenant.logoBase64}" alt="Logo" style="max-height:60px;max-width:200px;object-fit:contain;" /></div>` : ''}
       <h1>${esc(tenant.name)}</h1>
       <div class="subtitle">
         ${addressLines.join('\n        ')}

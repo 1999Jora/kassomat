@@ -3,6 +3,15 @@ import { formatCents } from './formatters';
 import type { CartItem } from '../store/useAppStore';
 import type { DeliveryInfo } from '../store/useAppStore';
 
+/** Load saved Lieferbon config from localStorage */
+function getLieferbonConfig() {
+  try {
+    const raw = localStorage.getItem('kassomat_lieferbon_config');
+    if (raw) return JSON.parse(raw) as Record<string, unknown>;
+  } catch { /* ignore */ }
+  return null;
+}
+
 /**
  * Lieferbon für POS-Lieferungen.
  * Kein RKSV QR-Code, kein Logo, "KEINE RECHNUNG" oben, mit Lieferadresse.
@@ -12,6 +21,11 @@ export async function printLieferbon(
   delivery: DeliveryInfo,
   tenantName = 'Kassomat',
 ): Promise<void> {
+  const cfg = getLieferbonConfig();
+  const title = (cfg?.title as string) ?? 'LIEFERBON';
+  const showTenant = (cfg?.showTenant as boolean) ?? true;
+  const showAddr = (cfg?.showAddress as boolean) ?? true;
+  const showPrices = (cfg?.showPrices as boolean) ?? true;
   const W = 80;
   const MARGIN = 5;
   const PRINT_W = W - MARGIN * 2;
@@ -62,9 +76,9 @@ export async function printLieferbon(
   // ── Header ──
   ctr('*** KEINE RECHNUNG ***', 10, true);
   y += 1;
-  ctr('LIEFERBON', 12, true);
+  ctr(title, 12, true);
   y += 1;
-  ctr(tenantName.toUpperCase(), 8, true);
+  if (showTenant) ctr(tenantName.toUpperCase(), 8, true);
   y += 2;
   divider();
 
@@ -76,7 +90,7 @@ export async function printLieferbon(
   y += 1;
 
   // Lieferadresse
-  if (delivery.name || delivery.street || delivery.city) {
+  if (showAddr && (delivery.name || delivery.street || delivery.city)) {
     divider(true);
     txt('LIEFERADRESSE:', 7, true);
     if (delivery.name) txt(delivery.name, 9, true, 2);
@@ -88,28 +102,39 @@ export async function printLieferbon(
   // Artikel
   divider();
   for (const item of items) {
-    const priceStr = formatCents(item.price * item.quantity - item.discount);
     doc.setFont('courier', 'normal');
     doc.setFontSize(8);
-    const priceW = doc.getTextWidth(priceStr) + 2;
-    const nameMaxW = PRINT_W - priceW - 6;
     const prefix = `${item.quantity}x `;
-    const nameLines = doc.splitTextToSize(item.name, nameMaxW - doc.getTextWidth(prefix)) as string[];
-    doc.text(prefix + nameLines[0], MARGIN, y);
-    doc.text(priceStr, COL_R, y, { align: 'right' });
-    for (let li = 1; li < nameLines.length; li++) {
-      y += lineH(8);
-      doc.text('   ' + nameLines[li], MARGIN, y);
+    if (showPrices) {
+      const priceStr = formatCents(item.price * item.quantity - item.discount);
+      const priceW = doc.getTextWidth(priceStr) + 2;
+      const nameMaxW = PRINT_W - priceW - 6;
+      const nameLines = doc.splitTextToSize(item.name, nameMaxW - doc.getTextWidth(prefix)) as string[];
+      doc.text(prefix + nameLines[0], MARGIN, y);
+      doc.text(priceStr, COL_R, y, { align: 'right' });
+      for (let li = 1; li < nameLines.length; li++) {
+        y += lineH(8);
+        doc.text('   ' + nameLines[li], MARGIN, y);
+      }
+    } else {
+      const nameLines = doc.splitTextToSize(item.name, PRINT_W - doc.getTextWidth(prefix)) as string[];
+      doc.text(prefix + nameLines[0], MARGIN, y);
+      for (let li = 1; li < nameLines.length; li++) {
+        y += lineH(8);
+        doc.text('   ' + nameLines[li], MARGIN, y);
+      }
     }
     y += lineH(8) + 1;
   }
 
   // Gesamt
   divider();
-  const totalGross = items.reduce((s, i) => s + i.price * i.quantity - i.discount, 0);
-  row('GESAMT', formatCents(totalGross), 10, true);
-  y += 2;
-  divider();
+  if (showPrices) {
+    const totalGross = items.reduce((s, i) => s + i.price * i.quantity - i.discount, 0);
+    row('GESAMT', formatCents(totalGross), 10, true);
+    y += 2;
+    divider();
+  }
   ctr('*** KEINE RECHNUNG ***', 8, true);
 
   doc.save(`Lieferbon_${Date.now()}.pdf`);

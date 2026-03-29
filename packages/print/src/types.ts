@@ -131,6 +131,8 @@ export interface TenantInfo {
   printerIp?: string | null;
   /** Printer port (for network printers) */
   printerPort?: number | null;
+  /** Logo as Base64 data URL */
+  logoBase64?: string | null;
 }
 
 // ============================================================

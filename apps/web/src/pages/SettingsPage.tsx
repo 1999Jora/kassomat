@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
@@ -1491,11 +1491,30 @@ function BonLayoutTab({ tenant }: { tenant: Tenant }) {
   const footer = tenant.settings.receiptFooter ?? 'Danke fuer Ihren Besuch!';
   const logoBase64 = tenant.settings.logoBase64 ?? null;
 
-  // Lieferbon config
-  const [lieferTitle, setLieferTitle] = useState('LIEFERBON');
-  const [showTenantOnLiefer, setShowTenantOnLiefer] = useState(true);
-  const [showAddress, setShowAddress] = useState(true);
-  const [showPrices, setShowPrices] = useState(true);
+  // Lieferbon config — load from localStorage
+  const savedLiefer = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('kassomat_lieferbon_config');
+      return raw ? JSON.parse(raw) as Record<string, unknown> : null;
+    } catch { return null; }
+  }, []);
+  const [lieferTitle, setLieferTitle] = useState((savedLiefer?.title as string) ?? 'LIEFERBON');
+  const [showTenantOnLiefer, setShowTenantOnLiefer] = useState((savedLiefer?.showTenant as boolean) ?? true);
+  const [showAddress, setShowAddress] = useState((savedLiefer?.showAddress as boolean) ?? true);
+  const [showPrices, setShowPrices] = useState((savedLiefer?.showPrices as boolean) ?? true);
+  const [lieferSaved, setLieferSaved] = useState(false);
+
+  function saveLieferbonConfig() {
+    localStorage.setItem('kassomat_lieferbon_config', JSON.stringify({
+      title: lieferTitle,
+      showTenant: showTenantOnLiefer,
+      showAddress,
+      showPrices,
+    }));
+    setLieferSaved(true);
+    toast.success('Lieferbon-Einstellungen gespeichert');
+    setTimeout(() => setLieferSaved(false), 2000);
+  }
 
   // Logo upload
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1667,9 +1686,16 @@ function BonLayoutTab({ tenant }: { tenant: Tenant }) {
                 <Toggle checked={showAddress} onChange={setShowAddress} labelOn="Adresse ein" labelOff="Adresse aus" />
                 <Toggle checked={showPrices} onChange={setShowPrices} labelOn="Preise ein" labelOff="Preise aus" />
               </div>
+              <button
+                type="button"
+                onClick={saveLieferbonConfig}
+                className={clsx('w-full py-2 rounded-lg text-sm font-semibold transition-colors', lieferSaved ? 'bg-[#00e87a]/20 text-[#00e87a]' : 'bg-[#00e87a] text-black hover:bg-[#00e87a]/90')}
+              >
+                {lieferSaved ? 'Gespeichert' : 'Speichern'}
+              </button>
               <div className="text-[10px] text-white/30 space-y-0.5 pt-2 border-t border-white/5">
                 <p>Kein RKSV QR-Code</p>
-                <p>"KEINE RECHNUNG" oben + unten</p>
+                <p>&quot;KEINE RECHNUNG&quot; oben + unten</p>
                 <p>Nur fuer interne Lieferzwecke</p>
               </div>
             </>

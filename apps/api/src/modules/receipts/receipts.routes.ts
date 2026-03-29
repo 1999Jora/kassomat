@@ -177,6 +177,7 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
       receiptFooter: tenant.receiptFooter ?? null,
       printerIp: tenant.printerIp ?? null,
       printerPort: tenant.printerPort ?? null,
+      logoBase64: tenant.logoBase64 ?? null,
     };
 
     // Determine printer config: prefer tenant's network printer if configured
@@ -283,6 +284,7 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
       receiptFooter: tenant.receiptFooter ?? null,
       printerIp: tenant.printerIp ?? null,
       printerPort: tenant.printerPort ?? null,
+      logoBase64: tenant.logoBase64 ?? null,
     };
 
     const html = await generateDigitalReceiptHTML(receiptData, tenantInfo);
