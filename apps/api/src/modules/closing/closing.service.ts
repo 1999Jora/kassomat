@@ -83,26 +83,27 @@ export class ClosingService {
     const receipts = await prisma.receipt.findMany({
       where: {
         tenantId,
-        type: 'sale',
-        status: { in: ['pending', 'signed', 'printed'] },
+        type: { in: ['sale', 'cancellation'] },
+        status: { in: ['pending', 'signed', 'printed', 'offline_pending'] },
         createdAt: { gte: new Date(`${from}T00:00:00`), lte: new Date(`${to}T23:59:59`) },
       },
       include: { items: true },
     });
 
     const totalRevenue = receipts.reduce((s, r) => s + r.totalGross, 0);
-    const receiptCount = receipts.length;
-    const averageReceiptValue = receiptCount > 0 ? Math.round(totalRevenue / receiptCount) : 0;
+    const salesOnly = receipts.filter((r) => r.type === 'sale');
+    const receiptCount = salesOnly.length;
+    const averageReceiptValue = receiptCount > 0 ? Math.round(salesOnly.reduce((s, r) => s + r.totalGross, 0) / receiptCount) : 0;
 
-    const revenueByChannel = { direct: 0, lieferando: 0, wix: 0 };
-    const revenueByPayment = { cash: 0, card: 0, online: 0 };
+    const revenueByChannel: Record<string, number> = { direct: 0, lieferando: 0, wix: 0 };
+    const revenueByPayment: Record<string, number> = { cash: 0, card: 0, online: 0 };
     const vatBreakdown = { vat0: 0, vat10: 0, vat13: 0, vat20: 0 };
     const productTotals = new Map<string, { productName: string; quantity: number; revenue: number }>();
     const hourlyRevenue = Array.from({ length: 24 }, (_, h) => ({ hour: h, revenue: 0 }));
 
     for (const r of receipts) {
-      revenueByChannel[r.channel] += r.totalGross;
-      revenueByPayment[r.paymentMethod] += r.totalGross;
+      revenueByChannel[r.channel] = (revenueByChannel[r.channel] ?? 0) + r.totalGross;
+      revenueByPayment[r.paymentMethod] = (revenueByPayment[r.paymentMethod] ?? 0) + r.totalGross;
       vatBreakdown.vat0 += r.vat0;
       vatBreakdown.vat10 += r.vat10;
       vatBreakdown.vat13 += r.vat13;

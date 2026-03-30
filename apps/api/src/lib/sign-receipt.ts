@@ -172,8 +172,13 @@ export async function signReceiptNow(receiptId: string, tenantId: string): Promi
     const causeMsg = cause instanceof Error ? cause.message : (cause ? String(cause) : '');
     console.error(`[sign] ${label} fehlgeschlagen für ${receiptId}:`, (err as Error).message, causeMsg);
 
-    if (hasRealSEE) {
-      // RKSV §13 Ausfallsmodus: SEE ist ausgefallen — keine Fake-Signatur erzeugen
+    // Unterscheidung: Sandbox/Test → Demo-Fallback, Production → Ausfallsmodus
+    const isProductionSEE =
+      (hasAtrust && tenant.atrustEnvironment === 'production') ||
+      (hasFiskaltrust && tenant.fiskaltrustEnvironment === 'production');
+
+    if (hasRealSEE && isProductionSEE) {
+      // RKSV §13 Ausfallsmodus: Echte Produktions-SEE ist ausgefallen
       console.error(`[sign] AUSFALLSMODUS (RKSV §13): Sicherheitseinrichtung ausgefallen für ${receiptId}`);
       seeFailure = true;
       signature = 'Sicherheitseinrichtung ausgefallen';
