@@ -45,6 +45,11 @@ export interface UpdateTenantInput {
     isActive: boolean;
     defaultDeliveryPayment: 'cash' | 'online';
   } | null;
+  mergeport?: {
+    apiKey?: string;
+    siteId: string;
+    enabled: boolean;
+  } | null;
   mypos?: {
     storeId: string;
     apiKey?: string;
@@ -176,6 +181,22 @@ export class TenantService {
       }
     }
 
+    if (input.mergeport !== undefined) {
+      if (input.mergeport === null) {
+        updateData['mergeportApiKey_encrypted'] = null;
+        updateData['mergeportApiKeyHint'] = null;
+        updateData['mergeportSiteId'] = null;
+        updateData['mergeportEnabled'] = false;
+      } else {
+        updateData['mergeportSiteId'] = input.mergeport.siteId;
+        if (input.mergeport.apiKey) {
+          updateData['mergeportApiKey_encrypted'] = encrypt(input.mergeport.apiKey);
+          updateData['mergeportApiKeyHint'] = keyHint(input.mergeport.apiKey);
+        }
+        updateData['mergeportEnabled'] = input.mergeport.enabled;
+      }
+    }
+
     if (input.mypos !== undefined) {
       if (input.mypos === null) {
         updateData['myposStoreId'] = null;
@@ -266,6 +287,14 @@ export class TenantService {
               defaultDeliveryPayment: tenant.wixDefaultDeliveryPayment,
             }
           : null,
+        mergeport: tenant.mergeportSiteId
+          ? {
+              siteId: tenant.mergeportSiteId,
+              configured: !!tenant.mergeportApiKey_encrypted,
+              apiKeyHint: tenant.mergeportApiKeyHint ?? null,
+              enabled: tenant.mergeportEnabled,
+            }
+          : null,
         mypos: tenant.myposStoreId
           ? {
               storeId: tenant.myposStoreId,
@@ -314,6 +343,13 @@ export class TenantService {
             webhookSecret: tenant.wixWebhookSecret ?? '',
             isActive: tenant.wixIsActive,
             defaultDeliveryPayment: tenant.wixDefaultDeliveryPayment,
+          }
+        : null,
+      mergeport: tenant.mergeportSiteId && tenant.mergeportApiKey_encrypted
+        ? {
+            siteId: tenant.mergeportSiteId,
+            apiKey: decrypt(tenant.mergeportApiKey_encrypted),
+            enabled: tenant.mergeportEnabled,
           }
         : null,
       mypos: tenant.myposStoreId && tenant.myposApiKey_encrypted && tenant.myposSecretKey_encrypted

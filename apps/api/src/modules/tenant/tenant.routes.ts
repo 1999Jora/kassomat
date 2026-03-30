@@ -45,6 +45,11 @@ const updateSchema = z.object({
     isActive: z.boolean(),
     defaultDeliveryPayment: z.enum(['cash', 'online']),
   }).nullable().optional(),
+  mergeport: z.object({
+    apiKey: z.string().optional(),
+    siteId: z.string().min(1),
+    enabled: z.boolean(),
+  }).nullable().optional(),
   mypos: z.object({
     storeId: z.string().min(1),
     // Optional on update: leave empty to keep existing encrypted value

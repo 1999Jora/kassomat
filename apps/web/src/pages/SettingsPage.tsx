@@ -94,7 +94,7 @@ function Toggle({
 
 // ─── Tab types ────────────────────────────────────────────────────────────────
 
-type Tab = 'general' | 'atrust' | 'fiskaltrust' | 'lieferando' | 'wix' | 'mypos' | 'printer' | 'bon-layout' | 'categories' | 'articles';
+type Tab = 'general' | 'atrust' | 'fiskaltrust' | 'lieferando' | 'wix' | 'mypos' | 'mergeport' | 'printer' | 'bon-layout' | 'categories' | 'articles';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'general', label: 'Allgemein' },
@@ -103,6 +103,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'lieferando', label: 'Lieferando' },
   { id: 'wix', label: 'Wix' },
   { id: 'mypos', label: 'myPOS' },
+  { id: 'mergeport', label: 'Mergeport' },
   { id: 'printer', label: 'Drucker' },
   { id: 'bon-layout', label: 'Bon-Layout' },
   { id: 'categories', label: 'Kategorien' },
@@ -745,6 +746,216 @@ function WixTab({ settings }: { settings: TenantSettings }) {
         )}
       </div>
     </form>
+  );
+}
+
+// ─── Mergeport tab ────────────────────────────────────────────────────────────
+
+interface MergeportConfig {
+  apiKey: string | null;
+  siteId: string | null;
+  enabled: boolean;
+  apiKeyHint?: string | null;
+  configured?: boolean;
+}
+
+interface MergeportStatus {
+  connected: boolean;
+  message?: string;
+}
+
+function MergeportTab({ settings }: { settings: TenantSettings }) {
+  const qc = useQueryClient();
+  const mergeport = (settings as unknown as { mergeport?: MergeportConfig }).mergeport;
+
+  const [enabled, setEnabled] = useState(mergeport?.enabled ?? false);
+  const [apiKey, setApiKey] = useState('');
+  const [siteId, setSiteId] = useState(mergeport?.siteId ?? '');
+
+  const statusQuery = useQuery<MergeportStatus>({
+    queryKey: ['mergeport-status'],
+    queryFn: async () => {
+      const res = await api.get<{ data: MergeportStatus }>('/mergeport/status');
+      return res.data.data;
+    },
+    enabled: !!(mergeport?.configured),
+    retry: false,
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: () => api.post('/mergeport/sync-menu'),
+    onSuccess: () => {
+      toast.success('Menü erfolgreich zu Mergeport synchronisiert');
+    },
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { error?: { message?: string } } } })
+          ?.response?.data?.error?.message ?? 'Sync fehlgeschlagen';
+      toast.error(msg);
+    },
+  });
+
+  const mutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.patch('/tenant', body),
+    onSuccess: () => {
+      toast.success('Mergeport Einstellungen gespeichert');
+      void qc.invalidateQueries({ queryKey: ['tenant'] });
+      void qc.invalidateQueries({ queryKey: ['mergeport-status'] });
+    },
+    onError: () => toast.error('Fehler beim Speichern'),
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!mergeport?.configured && !apiKey.trim()) {
+      toast.error('Bitte Mergeport API-Schlüssel eingeben');
+      return;
+    }
+    const payload: Record<string, unknown> = { siteId: siteId.trim() || null, enabled };
+    if (apiKey.trim()) payload['apiKey'] = apiKey.trim();
+    mutation.mutate({ mergeport: payload });
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-[#080a0c] border border-white/5 rounded-xl p-4 text-sm text-white/50 space-y-2">
+        <p className="font-medium text-white/70 flex items-center gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+          </svg>
+          Was ist Mergeport?
+        </p>
+        <p>
+          Mergeport ist eine Middleware, die alle Lieferplattformen (Lieferando, Wolt, Uber Eats u.v.m.)
+          über eine einheitliche Schnittstelle aggregiert. Alle Bestellungen landen in einem einzigen Feed.
+        </p>
+        <p className="text-white/40 text-xs">Alle Lieferplattformen über eine Schnittstelle</p>
+      </div>
+
+      {mergeport?.configured && (
+        <div className="bg-[#00e87a]/5 border border-[#00e87a]/20 rounded-xl p-3 text-sm text-[#00e87a] flex items-center gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          Mergeport ist konfiguriert. API-Schlüssel ist gespeichert.
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <Field label="Integration aktiviert">
+          <Toggle
+            checked={enabled}
+            onChange={setEnabled}
+            labelOn="Aktiv"
+            labelOff="Inaktiv"
+          />
+        </Field>
+
+        <Field
+          label="API-Schlüssel"
+          hint={mergeport?.configured ? 'Leer lassen, um den bestehenden Schlüssel zu behalten' : 'UUID-Format — aus Ihrem Mergeport Dashboard'}
+        >
+          <Input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder={mergeport?.configured ? '••••••••••••••••' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}
+            autoComplete="off"
+          />
+          {mergeport?.apiKeyHint && !apiKey && (
+            <p className="mt-1 text-xs text-[#00e87a]/70">KEY hinterlegt: {mergeport.apiKeyHint}</p>
+          )}
+        </Field>
+
+        <Field label="Site-ID" hint="UUID Ihrer Mergeport-Site — aus dem Mergeport Dashboard">
+          <Input
+            value={siteId}
+            onChange={(e) => setSiteId(e.target.value)}
+            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+          />
+        </Field>
+
+        <div className="pt-2 flex gap-3 flex-wrap">
+          <SaveButton loading={mutation.isPending} />
+          {mergeport?.configured && (
+            <button
+              type="button"
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending || !enabled}
+              className="bg-white/5 border border-white/10 text-white/70 font-medium px-6 py-2.5 rounded-lg text-sm hover:bg-white/10 transition-colors disabled:opacity-50 flex items-center gap-2"
+              title={!enabled ? 'Integration muss aktiviert sein' : 'Menü jetzt zu Mergeport hochladen'}
+            >
+              {syncMutation.isPending ? (
+                <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="23 4 23 10 17 10" />
+                  <polyline points="1 20 1 14 7 14" />
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                </svg>
+              )}
+              Menü synchronisieren
+            </button>
+          )}
+        </div>
+      </form>
+
+      {mergeport?.configured && (
+        <div className="border-t border-white/[0.06] pt-5">
+          <p className="text-sm font-medium text-white/70 mb-3">Verbindungsstatus</p>
+          {statusQuery.isLoading ? (
+            <div className="flex items-center gap-2 text-white/40 text-sm">
+              <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Status wird abgerufen…
+            </div>
+          ) : statusQuery.isError ? (
+            <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3 text-sm text-red-400 flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              Status konnte nicht abgerufen werden
+            </div>
+          ) : statusQuery.data?.connected ? (
+            <div className="bg-[#00e87a]/5 border border-[#00e87a]/20 rounded-xl p-3 text-sm text-[#00e87a] flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              Verbunden — Mergeport erreichbar
+              {statusQuery.data.message && (
+                <span className="text-white/40 ml-1">({statusQuery.data.message})</span>
+              )}
+            </div>
+          ) : (
+            <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3 text-sm text-red-400 flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+              Nicht verbunden
+              {statusQuery.data?.message && (
+                <span className="ml-1">— {statusQuery.data.message}</span>
+              )}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => void statusQuery.refetch()}
+            className="mt-2 text-xs text-white/40 hover:text-white/60 transition-colors"
+          >
+            Status aktualisieren
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1798,6 +2009,7 @@ export default function SettingsPage() {
         {activeTab === 'fiskaltrust' && <FiskaltrustTab settings={tenant.settings} />}
         {activeTab === 'lieferando' && <LieferandoTab settings={tenant.settings} />}
         {activeTab === 'wix' && <WixTab settings={tenant.settings} />}
+        {activeTab === 'mergeport' && <MergeportTab settings={tenant.settings} />}
         {activeTab === 'mypos' && <MyPOSTab settings={tenant.settings} />}
         {activeTab === 'printer' && <PrinterTab settings={tenant.settings} />}
         {activeTab === 'bon-layout' && <BonLayoutTab tenant={tenant} />}

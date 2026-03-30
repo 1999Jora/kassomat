@@ -4,7 +4,7 @@ import { OrdersService } from './orders.service';
 
 const listQuerySchema = z.object({
   status: z.enum(['pending', 'accepted', 'in_progress', 'completed', 'cancelled']).optional(),
-  source: z.enum(['lieferando', 'wix']).optional(),
+  source: z.enum(['lieferando', 'wix', 'mergeport']).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });

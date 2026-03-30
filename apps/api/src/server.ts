@@ -21,6 +21,8 @@ import { myposRoutes } from './modules/mypos/mypos.routes';
 import { wixRoutes } from './modules/wix/wix.routes';
 import { driversRoutes } from './modules/drivers/drivers.routes';
 import { deliveryRoutes } from './modules/delivery/delivery.routes';
+import { mergeportRoutes } from './modules/mergeport/mergeport.routes';
+import { startMergeportPoller, stopMergeportPoller } from './modules/mergeport/mergeport.poller';
 
 import { AppError } from './lib/errors';
 
@@ -154,6 +156,18 @@ export async function buildServer() {
   await fastify.register(wixRoutes);
   await fastify.register(driversRoutes);
   await fastify.register(deliveryRoutes);
+  await fastify.register(mergeportRoutes);
+
+  // Mergeport Polling nach Server-Start starten
+  fastify.addHook('onReady', () => {
+    startMergeportPoller(fastify);
+  });
+
+  // Mergeport Polling bei Shutdown stoppen
+  fastify.addHook('onClose', (_instance, done) => {
+    stopMergeportPoller();
+    done();
+  });
 
   return fastify;
 }

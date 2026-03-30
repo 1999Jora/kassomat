@@ -119,7 +119,7 @@ type ReceiptType = 'sale' | 'cancellation' | 'training' | 'null_receipt' | 'star
 /** Status des Belegs im Signatur-Workflow */
 type ReceiptStatus = 'pending' | 'signed' | 'printed' | 'cancelled' | 'offline_pending';
 /** Vertriebskanal */
-type SalesChannel = 'direct' | 'lieferando' | 'wix';
+type SalesChannel = 'direct' | 'lieferando' | 'wix' | 'mergeport';
 /** Ein Kassenbon / Beleg */
 interface Receipt {
     /** UUID */
@@ -260,12 +260,12 @@ interface DEPBelegeGruppe {
 type DeliveryPaymentMethod = 'cash_on_delivery' | 'online_paid';
 /** Status einer eingehenden Bestellung */
 type IncomingOrderStatus = 'pending' | 'accepted' | 'in_progress' | 'completed' | 'cancelled';
-/** Eine eingehende Bestellung von Lieferando oder Wix */
+/** Eine eingehende Bestellung von Lieferando, Wix oder Mergeport */
 interface IncomingOrder {
     /** UUID */
     id: string;
     tenantId: string;
-    source: 'lieferando' | 'wix';
+    source: 'lieferando' | 'wix' | 'mergeport';
     /** Externe Bestell-ID vom jeweiligen System */
     externalId: string;
     /** Kurze, fortlaufende Auftragsnummer (z.B. 42) */

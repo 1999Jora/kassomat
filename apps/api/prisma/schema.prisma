@@ -67,6 +67,7 @@ enum SalesChannel {
   direct
   lieferando
   wix
+  mergeport
 }
 
 enum PaymentMethod {
@@ -86,6 +87,7 @@ enum IncomingOrderStatus {
 enum OrderSource {
   lieferando
   wix
+  mergeport
 }
 
 enum DeliveryPaymentMethod {
@@ -174,6 +176,12 @@ model Tenant {
   wixWebhookSecret        String?
   wixIsActive             Boolean @default(false)
   wixDefaultDeliveryPayment String @default("cash")
+
+  // Mergeport Config (aggregiert alle Delivery-Plattformen)
+  mergeportApiKey_encrypted String?
+  mergeportApiKeyHint       String?
+  mergeportSiteId           String?
+  mergeportEnabled          Boolean @default(false)
 
   // myPOS Config
   myposStoreId              String?
