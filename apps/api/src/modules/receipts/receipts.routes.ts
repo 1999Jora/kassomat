@@ -168,6 +168,8 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
       rksvRegistrierkasseId: receipt.rksv.registrierkasseId || null,
       rksvCertSerial: receipt.rksv.atCertificateSerial || null,
       receiptStatus: receipt.status as ReceiptData['receiptStatus'],
+      receiptType: receipt.type,
+      cancelledReceiptNumber: receipt.cancelledReceipt?.receiptNumber ?? undefined,
     };
 
     const tenantInfo: TenantInfo = {
@@ -222,7 +224,7 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
     // can open a link sent by email. We still scope by receipt ID.
     const receipt = await fastify.prisma.receipt.findUnique({
       where: { id },
-      include: { items: true },
+      include: { items: true, cancelledReceipt: { select: { id: true, receiptNumber: true } } },
     });
 
     if (!receipt) {
@@ -276,6 +278,8 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
       rksvRegistrierkasseId: receipt.rksv_registrierkasseId ?? null,
       rksvCertSerial: receipt.rksv_atCertificateSerial ?? null,
       receiptStatus: receipt.status as ReceiptData['receiptStatus'],
+      receiptType: receipt.type,
+      cancelledReceiptNumber: receipt.cancelledReceipt?.receiptNumber ?? undefined,
     };
 
     const tenantInfo: TenantInfo = {
