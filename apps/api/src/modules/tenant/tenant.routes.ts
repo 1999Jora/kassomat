@@ -21,6 +21,7 @@ const registerSchema = z.object({
 
 const updateSchema = z.object({
   name: z.string().min(2).optional(),
+  driverCode: z.string().min(3).max(20).regex(/^[a-zA-Z0-9-]+$/, 'Nur Buchstaben, Zahlen und Bindestriche').nullable().optional(),
   address: z.string().nullable().optional(),
   city: z.string().nullable().optional(),
   receiptFooter: z.string().nullable().optional(),
@@ -69,11 +70,11 @@ export async function tenantRoutes(fastify: FastifyInstance): Promise<void> {
   const tenantService = new TenantService();
   const authService = new AuthService(fastify);
 
-  /** GET /tenant/lookup/:slug — öffentlich, für Fahrer-Login ohne JWT */
-  fastify.get<{ Params: { slug: string } }>('/tenant/lookup/:slug', async (request, reply) => {
-    const tenant = await prisma.tenant.findUnique({
-      where: { slug: request.params.slug },
-      select: { id: true, name: true, slug: true },
+  /** GET /tenant/lookup/:code — öffentlich, Fahrer gibt Verbindungscode ein */
+  fastify.get<{ Params: { code: string } }>('/tenant/lookup/:code', async (request, reply) => {
+    const tenant = await prisma.tenant.findFirst({
+      where: { driverCode: request.params.code },
+      select: { id: true, name: true },
     });
     if (!tenant) return reply.status(404).send({ error: 'Betrieb nicht gefunden' });
     return { success: true, data: tenant };

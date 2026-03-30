@@ -20,6 +20,7 @@ export interface RegisterTenantInput {
 
 export interface UpdateTenantInput {
   name?: string;
+  driverCode?: string | null;
   address?: string | null;
   city?: string | null;
   receiptFooter?: string | null;
@@ -120,6 +121,7 @@ export class TenantService {
     }
 
     if (input.name !== undefined) updateData['name'] = input.name;
+    if (input.driverCode !== undefined) updateData['driverCode'] = input.driverCode;
     if (input.address !== undefined) updateData['address'] = input.address;
     if (input.city !== undefined) updateData['city'] = input.city;
     if (input.receiptFooter !== undefined) updateData['receiptFooter'] = input.receiptFooter;
@@ -251,6 +253,7 @@ export class TenantService {
       status: tenant.status,
       trialEndsAt: tenant.trialEndsAt,
       createdAt: tenant.createdAt,
+      driverCode: tenant.driverCode ?? null,
       settings: {
         currency: tenant.currency,
         timezone: tenant.timezone,

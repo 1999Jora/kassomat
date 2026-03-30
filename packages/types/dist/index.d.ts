@@ -17,6 +17,8 @@ interface Tenant {
     name: string;
     /** URL-Slug z.B. "spaetii-innsbruck" */
     slug: string;
+    /** Fahrer-Verbindungscode (vom Admin festgelegt) */
+    driverCode: string | null;
     plan: TenantPlan;
     status: TenantStatus;
     /** Null wenn kein Trial oder Trial abgelaufen */

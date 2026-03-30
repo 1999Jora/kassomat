@@ -134,6 +134,9 @@ model Tenant {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
+  // Fahrer-Verbindungscode (vom Admin festgelegt, z.B. "pizza123")
+  driverCode      String?   @unique
+
   // Settings (inline, kein separates Model nötig)
   currency        String  @default("EUR")
   timezone        String  @default("Europe/Vienna")

@@ -122,6 +122,7 @@ interface TenantResponse {
 function GeneralTab({ tenant }: { tenant: Tenant }) {
   const qc = useQueryClient();
   const [name, setName] = useState(tenant.name);
+  const [driverCode, setDriverCode] = useState(tenant.driverCode ?? '');
   const [address, setAddress] = useState(tenant.settings.address ?? '');
   const [city, setCity] = useState(tenant.settings.city ?? '');
   const [vatNumber, setVatNumber] = useState(tenant.settings.vatNumber ?? '');
@@ -140,6 +141,7 @@ function GeneralTab({ tenant }: { tenant: Tenant }) {
     e.preventDefault();
     mutation.mutate({
       name,
+      driverCode: driverCode || null,
       address: address || null,
       city: city || null,
       vatNumber: vatNumber || null,
@@ -151,6 +153,15 @@ function GeneralTab({ tenant }: { tenant: Tenant }) {
     <form onSubmit={handleSubmit} className="space-y-5">
       <Field label="Firmenname">
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Mein Betrieb" />
+      </Field>
+
+      <Field label="Fahrer-Code" hint="Code den Fahrer eingeben um sich zu verbinden (z.B. pizza123)">
+        <Input
+          value={driverCode}
+          onChange={(e) => setDriverCode(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+          placeholder="mein-code"
+          maxLength={20}
+        />
       </Field>
 
       <div className="grid grid-cols-2 gap-3">
