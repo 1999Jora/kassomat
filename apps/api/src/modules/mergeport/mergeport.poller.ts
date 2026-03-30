@@ -3,6 +3,7 @@ import { prisma } from '../../lib/prisma';
 import { decrypt } from '../../lib/crypto';
 import { MergeportClient } from './mergeport.client';
 import { mapMergeportOrder } from './mergeport.mapper';
+import { notificationService } from '../notifications/notification.service';
 import type { MergeportOrder } from './mergeport.client';
 
 // ---------------------------------------------------------------------------
@@ -215,6 +216,17 @@ async function processNewOrder(
     possibleStateChanges: mapped.possibleStateChanges,
     tip: mapped.tip,
     deliveryFee: mapped.deliveryFee,
+  });
+
+  // Send push notification for background app
+  void notificationService.sendOrderNotification(tenantId, {
+    id: saved.id,
+    externalId: order.id,
+    orderNumber: saved.orderNumber,
+    source: 'mergeport',
+    totalAmount: saved.totalAmount,
+  }).catch((err) => {
+    fastify.log.error({ err, orderId: order.id }, '[Mergeport Poller] Push notification failed');
   });
 }
 

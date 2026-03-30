@@ -2,10 +2,14 @@ import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'at.kassomat.pos',
-  appName: 'Kassomat POS',
+  appName: 'Kassomat',
   webDir: 'dist',
   server: {
     androidScheme: 'https',
+    // For production: API calls go to Railway.
+    // VITE_API_URL is baked in at build time via .env.android or the
+    // android:build / android:release npm scripts, so the bundled JS
+    // already contains the full https://kassomat-production.up.railway.app URL.
   },
   plugins: {
     StatusBar: {

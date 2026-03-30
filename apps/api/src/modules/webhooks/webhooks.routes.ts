@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { LieferandoService } from '../lieferando/lieferando.service';
 import { WixService } from '../wix/wix.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { notificationService } from '../notifications/notification.service';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 
@@ -115,6 +116,15 @@ export async function webhooksRoutes(fastify: FastifyInstance): Promise<void> {
               realtime.emitNewOrder(tenantId, toIncomingOrder(order));
             }
 
+            // Send push notification for background app
+            void notificationService.sendOrderNotification(tenantId, {
+              id: (order as { id: string }).id,
+              externalId: (order as { externalId: string }).externalId,
+              source: 'lieferando',
+            }).catch((err: unknown) => {
+              request.log.error({ err }, '[Lieferando] Push notification failed');
+            });
+
             // Auto-assign delivery to driver with fewest active stops
             await autoAssignDelivery(tenantId, (order as { id: string }).id).catch((err: unknown) => {
               request.log.error({ err }, '[Lieferando] Auto-assign delivery failed');
@@ -186,6 +196,15 @@ export async function webhooksRoutes(fastify: FastifyInstance): Promise<void> {
             if (realtime) {
               realtime.emitNewOrder(tenantId, toIncomingOrder(order));
             }
+
+            // Send push notification for background app
+            void notificationService.sendOrderNotification(tenantId, {
+              id: (order as { id: string }).id,
+              externalId: (order as { externalId: string }).externalId,
+              source: 'wix',
+            }).catch((err: unknown) => {
+              request.log.error({ err }, '[Wix] Push notification failed');
+            });
 
             // Auto-assign delivery to driver with fewest active stops
             await autoAssignDelivery(tenantId, (order as { id: string }).id).catch((err: unknown) => {

@@ -45,3 +45,8 @@ coverage
 # PWA
 public/sw.js
 public/workbox-*.js
+
+# Android — keep the Capacitor project in the repo, ignore build artefacts
+apps/web/android/.gradle/
+apps/web/android/app/build/
+apps/web/android/capacitor-cordova-android-plugins/

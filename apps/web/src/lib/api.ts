@@ -202,7 +202,7 @@ export function getDigitalReceiptUrl(receiptId: string): string {
 
 // ── Print mode (stored per-device in localStorage) ───────────────────────────
 
-export type PrintMode = 'printer' | 'pdf' | 'none';
+export type PrintMode = 'printer' | 'bluetooth' | 'pdf' | 'none';
 
 export function getPrintMode(): PrintMode {
   return (localStorage.getItem('kassomat_print_mode') as PrintMode | null) ?? 'pdf';

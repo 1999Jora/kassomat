@@ -202,6 +202,7 @@ model Tenant {
   printJobs     PrintJob[]
   drivers       Driver[]
   deliveries    Delivery[]
+  deviceTokens  DeviceToken[]
 
   @@index([slug])
   @@index([status])
@@ -229,6 +230,7 @@ model User {
   shifts        Shift[]
   dailyClosings DailyClosing[]
   refreshTokens RefreshToken[]
+  deviceTokens  DeviceToken[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -589,4 +591,24 @@ model Delivery {
   @@index([tenantId])
   @@index([tenantId, driverId])
   @@index([driverId])
+}
+
+// ============================================================
+// PUSH NOTIFICATION DEVICE TOKENS
+// ============================================================
+
+model DeviceToken {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  token     String   @unique
+  platform  String   // 'android' | 'ios' | 'web'
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([userId])
 }

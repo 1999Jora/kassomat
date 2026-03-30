@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Kassomat POS</string>
-    <string name="title_activity_main">Kassomat POS</string>
+    <string name="app_name">Kassomat</string>
+    <string name="title_activity_main">Kassomat</string>
     <string name="package_name">at.kassomat.pos</string>
     <string name="custom_url_scheme">at.kassomat.pos</string>
 </resources>
