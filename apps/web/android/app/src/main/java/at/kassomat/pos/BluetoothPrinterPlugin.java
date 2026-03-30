@@ -389,7 +389,7 @@ public class BluetoothPrinterPlugin extends Plugin {
         return false;
     }
 
-    private boolean hasRequiredPermissions() {
+    public boolean hasRequiredPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             return ContextCompat.checkSelfPermission(getContext(), "android.permission.BLUETOOTH_CONNECT")
                     == PackageManager.PERMISSION_GRANTED

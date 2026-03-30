@@ -46,7 +46,9 @@ export async function buildServer() {
       const allowed = (process.env['CORS_ORIGIN'] ?? 'http://localhost:5173')
         .split(',')
         .map(o => o.trim());
-      if (!origin || process.env['NODE_ENV'] === 'development' || allowed.includes(origin)) {
+      // Capacitor Android/iOS apps use these origins
+      const capacitorOrigins = ['https://localhost', 'capacitor://localhost', 'http://localhost'];
+      if (!origin || process.env['NODE_ENV'] === 'development' || allowed.includes(origin) || capacitorOrigins.includes(origin)) {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'), false);

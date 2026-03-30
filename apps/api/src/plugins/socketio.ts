@@ -26,10 +26,13 @@ declare module 'fastify' {
 
 export default fp(async (fastify: FastifyInstance) => {
   const corsOrigin = (process.env['CORS_ORIGIN'] ?? 'http://localhost:5173').split(',');
+  // Capacitor Android/iOS apps use these origins
+  const capacitorOrigins = ['https://localhost', 'capacitor://localhost', 'http://localhost'];
+  const allOrigins = [...corsOrigin, ...capacitorOrigins];
 
   const io = new SocketIOServer(fastify.server, {
     cors: {
-      origin: process.env['NODE_ENV'] === 'development' ? true : corsOrigin,
+      origin: process.env['NODE_ENV'] === 'development' ? true : allOrigins,
       credentials: true,
     },
     // Transports: prefer WebSocket, fall back to long-polling
