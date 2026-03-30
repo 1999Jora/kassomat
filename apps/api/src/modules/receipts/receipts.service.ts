@@ -373,6 +373,62 @@ export class ReceiptsService {
     return this._createZeroReceipt(tenantId, cashierId, 'closing_receipt', cashRegisterId ?? 'KASSE-01');
   }
 
+  /**
+   * Sammelbeleg erstellen (RKSV §13)
+   *
+   * Nach einer SEE-Ausfallsphase wird ein Sammelbeleg (Null-Beleg) erstellt,
+   * der das Ende der Ausfallsphase markiert. Alle offline_pending Bons müssen
+   * vorher erfolgreich nachsigniert worden sein.
+   *
+   * Verwendet type 'null_receipt' (kein eigener Enum-Wert), aber der DEP-Eintrag
+   * wird mit 'null_receipt:SAMMELBELEG' gekennzeichnet.
+   */
+  async createSammelbeleg(tenantId: string, cashRegisterId = 'KASSE-01') {
+    // Find the owner to use as cashierId
+    const owner = await prisma.user.findFirst({
+      where: { tenantId, role: 'owner' },
+      select: { id: true },
+    });
+
+    if (!owner) {
+      throw new ValidationError(`Kein Owner für Tenant ${tenantId} gefunden`);
+    }
+
+    const receipt = await withSerializableRetry(async (tx) => {
+      const year = new Date().getFullYear();
+      const last = await tx.receipt.findFirst({
+        where: { tenantId },
+        orderBy: { receiptNumber: 'desc' },
+        select: { receiptNumber: true },
+      });
+      let nextNum = 1;
+      if (last?.receiptNumber) {
+        const parts = last.receiptNumber.split('-');
+        nextNum = parseInt(parts[parts.length - 1] ?? '0', 10) + 1;
+      }
+
+      return tx.receipt.create({
+        data: {
+          tenantId,
+          receiptNumber: `${year}-${String(nextNum).padStart(6, '0')}`,
+          cashRegisterId,
+          type: 'null_receipt',
+          status: 'pending',
+          cashierId: owner.id,
+          channel: 'direct',
+          paymentMethod: 'cash',
+          amountPaid: 0, change: 0, tip: 0,
+          subtotalNet: 0, vat0: 0, vat10: 0, vat13: 0, vat20: 0, totalVat: 0, totalGross: 0,
+        },
+        include: { items: true },
+      });
+    });
+
+    void signReceiptNow(receipt.id, tenantId);
+    console.log(`[RKSV] Sammelbeleg erstellt: ${receipt.receiptNumber} für Tenant ${tenantId} (Ende SEE-Ausfall)`);
+    return toReceiptResponse(receipt);
+  }
+
   /** Erstellt einen Null-Beleg (0 EUR) für verschiedene Sonder-Typen */
   private async _createZeroReceipt(
     tenantId: string,

@@ -4,12 +4,18 @@ import { TenantService } from './tenant.service';
 import { AuthService } from '../auth/auth.service';
 import { requireRole } from '../../middleware/auth';
 
+/** Austrian UID-Nummer: ATU followed by exactly 8 digits (e.g. ATU12345678) */
+const vatNumberSchema = z.string().regex(
+  /^ATU\d{8}$/,
+  'UID-Nummer muss im Format ATU + 8 Ziffern sein (z.B. ATU12345678)',
+);
+
 const registerSchema = z.object({
   tenantName: z.string().min(2, 'Firmenname muss mindestens 2 Zeichen haben'),
   ownerEmail: z.string().email('Ungültige E-Mail-Adresse'),
   ownerPassword: z.string().min(8, 'Passwort muss mindestens 8 Zeichen haben'),
   ownerName: z.string().min(1, 'Name erforderlich'),
-  vatNumber: z.string().nullable().optional(),
+  vatNumber: vatNumberSchema.nullable().optional(),
 });
 
 const updateSchema = z.object({
@@ -19,7 +25,7 @@ const updateSchema = z.object({
   receiptFooter: z.string().nullable().optional(),
   printerIp: z.string().nullable().optional(),
   printerPort: z.number().int().min(1).max(65535).nullable().optional(),
-  vatNumber: z.string().nullable().optional(),
+  vatNumber: vatNumberSchema.nullable().optional(),
   rksvEnabled: z.boolean().optional(),
   atrust: z.object({
     certificateSerial: z.string().optional(),

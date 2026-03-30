@@ -15,6 +15,7 @@ import DriverNavPage from './pages/DriverNavPage';
 import DispatcherPage from './pages/DispatcherPage';
 import DriversPage from './pages/DriversPage';
 import ReceiptsPage from './pages/ReceiptsPage';
+import TagesabschlussPage from './pages/TagesabschlussPage';
 import { Toaster } from 'react-hot-toast';
 import { useAppStore } from './store/useAppStore';
 import { useRealtimeOrders } from './hooks/useRealtimeOrders';
@@ -100,6 +101,11 @@ function AnimatedRoutes() {
           <Route path="/rechnungen" element={
             <ProtectedRoute>
               <AdminLayout><ReceiptsPage /></AdminLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/tagesabschluss" element={
+            <ProtectedRoute>
+              <AdminLayout><TagesabschlussPage /></AdminLayout>
             </ProtectedRoute>
           } />
 

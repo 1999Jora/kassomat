@@ -46,6 +46,8 @@ import {
   type DepBackupJobData,
   type CreateMonthReceiptJobData,
 } from '../lib/queue';
+import { signReceiptNow } from '../lib/sign-receipt';
+import { ReceiptsService } from '../modules/receipts/receipts.service';
 
 // ============================================================
 // Redis Connection
@@ -564,7 +566,7 @@ async function handleDepBackup(job: Job<DepBackupJobData>): Promise<void> {
 async function handleRetrySignatures(): Promise<void> {
   const offlineReceipts = await prisma.receipt.findMany({
     where: { status: 'offline_pending' },
-    select: { id: true, tenantId: true },
+    select: { id: true, tenantId: true, cashRegisterId: true },
     take: 50,
   });
 
@@ -572,12 +574,46 @@ async function handleRetrySignatures(): Promise<void> {
 
   console.log(`[RKSV Worker] Retry: ${offlineReceipts.length} offline_pending Bons`);
 
+  // Group by tenant to track per-tenant success
+  const byTenant = new Map<string, { ids: string[]; cashRegisterId: string }>();
+  for (const r of offlineReceipts) {
+    const existing = byTenant.get(r.tenantId);
+    if (existing) {
+      existing.ids.push(r.id);
+    } else {
+      byTenant.set(r.tenantId, { ids: [r.id], cashRegisterId: r.cashRegisterId });
+    }
+  }
+
+  // Try to re-sign each receipt synchronously using signReceiptNow
   for (const receipt of offlineReceipts) {
-    await rksvQueue.add(
-      'sign_receipt',
-      { receiptId: receipt.id, tenantId: receipt.tenantId },
-      { delay: 0 },
-    );
+    try {
+      await signReceiptNow(receipt.id, receipt.tenantId);
+    } catch (err) {
+      console.error(`[RKSV Worker] Retry-Signatur fehlgeschlagen für ${receipt.id}:`, (err as Error).message);
+    }
+  }
+
+  // For each affected tenant, check if all offline_pending receipts are now resolved
+  const receiptsService = new ReceiptsService();
+
+  for (const [tenantId, { cashRegisterId }] of byTenant) {
+    const remainingCount = await prisma.receipt.count({
+      where: { tenantId, status: 'offline_pending' },
+    });
+
+    if (remainingCount === 0) {
+      // RKSV §13: All offline receipts re-signed successfully.
+      // Create Sammelbeleg to mark the end of the SEE outage period.
+      try {
+        console.log(`[RKSV Worker] SEE wieder online für Tenant ${tenantId} — erstelle Sammelbeleg (RKSV §13)`);
+        await receiptsService.createSammelbeleg(tenantId, cashRegisterId);
+      } catch (err) {
+        console.error(`[RKSV Worker] Sammelbeleg-Erstellung fehlgeschlagen für Tenant ${tenantId}:`, (err as Error).message);
+      }
+    } else {
+      console.log(`[RKSV Worker] Tenant ${tenantId}: noch ${remainingCount} offline_pending Bons — kein Sammelbeleg`);
+    }
   }
 }
 
