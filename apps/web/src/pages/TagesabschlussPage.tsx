@@ -126,10 +126,9 @@ export default function TagesabschlussPage() {
       toast.success('Tagesabschluss erfolgreich durchgeführt');
       setClosingDone(true);
     } catch (err: unknown) {
-      const message =
-        err && typeof err === 'object' && 'response' in err
-          ? ((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? 'Tagesabschluss fehlgeschlagen')
-          : 'Tagesabschluss fehlgeschlagen';
+      const axErr = err as { response?: { data?: { error?: { message?: string } | string } } };
+      const errBody = axErr?.response?.data?.error;
+      const message = typeof errBody === 'string' ? errBody : errBody?.message ?? 'Tagesabschluss fehlgeschlagen';
       toast.error(message);
     }
   }
