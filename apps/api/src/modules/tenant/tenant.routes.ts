@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
+import { prisma } from '../../lib/prisma';
 import { TenantService } from './tenant.service';
 import { AuthService } from '../auth/auth.service';
 import { requireRole } from '../../middleware/auth';
@@ -67,6 +68,16 @@ const updateSchema = z.object({
 export async function tenantRoutes(fastify: FastifyInstance): Promise<void> {
   const tenantService = new TenantService();
   const authService = new AuthService(fastify);
+
+  /** GET /tenant/lookup/:slug — öffentlich, für Fahrer-Login ohne JWT */
+  fastify.get<{ Params: { slug: string } }>('/tenant/lookup/:slug', async (request, reply) => {
+    const tenant = await prisma.tenant.findUnique({
+      where: { slug: request.params.slug },
+      select: { id: true, name: true, slug: true },
+    });
+    if (!tenant) return reply.status(404).send({ error: 'Betrieb nicht gefunden' });
+    return { success: true, data: tenant };
+  });
 
   /** POST /tenant/register — kein Auth nötig */
   fastify.post('/tenant/register', async (request, reply) => {

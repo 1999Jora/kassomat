@@ -35,6 +35,13 @@ export default function DriverPINGate({ drivers, onSuccess }: Props) {
           setError('Falscher PIN');
           setPin('');
         } else {
+          const data = await res.json();
+          // Save tenantId + driverId + PIN for subsequent API calls
+          if (data.driver?.tenantId) {
+            localStorage.setItem('kassomat_driver_tenant', data.driver.tenantId);
+          }
+          localStorage.setItem('kassomat_driver_id', selected.id);
+          localStorage.setItem('kassomat_driver_pin', next);
           onSuccess(selected);
         }
       } catch {

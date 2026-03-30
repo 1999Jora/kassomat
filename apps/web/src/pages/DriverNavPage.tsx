@@ -50,9 +50,62 @@ function getArrowIcon(modifier: string): string {
   return '↑';
 }
 
+function TenantCodeScreen({ onTenantId }: { onTenantId: (id: string) => void }) {
+  const [code, setCode] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!code.trim()) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API}/tenant/lookup/${encodeURIComponent(code.trim().toLowerCase())}`);
+      if (!res.ok) { setError('Betrieb nicht gefunden'); setLoading(false); return; }
+      const data = await res.json();
+      localStorage.setItem('kassomat_driver_tenant', data.data.id);
+      onTenantId(data.data.id);
+    } catch {
+      setError('Verbindungsfehler');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ background: '#080a0c' }}>
+      <div className="w-full max-w-xs flex flex-col items-center">
+        <p className="text-white/40 text-xs tracking-widest uppercase mb-2">Fahrer-Login</p>
+        <h2 className="text-white font-bold text-2xl mb-2">Betriebscode</h2>
+        <p className="text-white/40 text-sm mb-8 text-center">Frag deinen Chef nach dem Betriebscode</p>
+        <form onSubmit={handleSubmit} className="w-full space-y-4">
+          <input
+            type="text"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="z.B. mein-betrieb"
+            autoFocus
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-center text-lg font-medium placeholder-white/20 focus:outline-none focus:border-[#4f8ef7]/50 focus:ring-1 focus:ring-[#4f8ef7]/30 transition-colors"
+          />
+          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+          <button
+            type="submit"
+            disabled={loading || !code.trim()}
+            className="w-full py-3 rounded-xl font-semibold text-sm transition-all bg-[#4f8ef7] text-white hover:bg-[#4f8ef7]/90 disabled:opacity-50"
+          >
+            {loading ? 'Wird gesucht...' : 'Weiter'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function DriverNavPage() {
   const { drivers, setActiveDriverId } = useDeliveryStore();
   const [loadingDrivers, setLoadingDrivers] = useState(true);
+  const [tenantReady, setTenantReady] = useState(false);
   const [activeDriver, setActiveDriver] = useState<Driver | null>(null);
   const [myDeliveries, setMyDeliveries] = useState<Delivery[]>([]);
   const [sortedDeliveries, setSortedDeliveries] = useState<Delivery[]>([]);
@@ -74,11 +127,28 @@ export default function DriverNavPage() {
   const watchIdRef = useRef<number | null>(null);
   const lastGeocode = useRef<number>(0);
 
-  // Load drivers on mount — token optional, tenantId aus localStorage für öffentlichen Zugriff
+  // Check if we have a tenantId already
   useEffect(() => {
     const token = localStorage.getItem('kassomat_access_token');
     const userRaw = localStorage.getItem('kassomat_user');
-    const tenantId = userRaw ? (JSON.parse(userRaw) as { tenantId: string }).tenantId : null;
+    const savedTenant = localStorage.getItem('kassomat_driver_tenant');
+    const userTenant = userRaw ? (JSON.parse(userRaw) as { tenantId: string }).tenantId : null;
+
+    if (token || savedTenant || userTenant) {
+      setTenantReady(true);
+    } else {
+      setLoadingDrivers(false);
+    }
+  }, []);
+
+  // Load drivers once tenantReady
+  useEffect(() => {
+    if (!tenantReady) return;
+
+    const token = localStorage.getItem('kassomat_access_token');
+    const userRaw = localStorage.getItem('kassomat_user');
+    const tenantId = localStorage.getItem('kassomat_driver_tenant')
+      ?? (userRaw ? (JSON.parse(userRaw) as { tenantId: string }).tenantId : null);
 
     const url = token
       ? `${API}/drivers`
@@ -93,22 +163,28 @@ export default function DriverNavPage() {
       .then(data => { useDeliveryStore.getState().setDrivers(Array.isArray(data) ? data : []); })
       .catch(() => {})
       .finally(() => setLoadingDrivers(false));
-  }, []);
+  }, [tenantReady]);
 
   // On driver login
   const handleDriverLogin = useCallback(async (driver: Driver) => {
     setActiveDriver(driver);
     setActiveDriverId(driver.id);
 
-    // Load driver's deliveries
-    const res = await fetch(`${API}/deliveries/driver/${driver.id}`);
+    // PIN from localStorage (saved by DriverPINGate on successful verify)
+    const driverPin = localStorage.getItem('kassomat_driver_pin') ?? '';
+
+    // Load driver's deliveries (requires x-driver-pin header)
+    const res = await fetch(`${API}/deliveries/driver/${driver.id}`, {
+      headers: { 'x-driver-pin': driverPin },
+    });
     const data = await res.json();
     const myD = Array.isArray(data) ? data : [];
     setMyDeliveries(myD);
 
-    // tenantId aus localStorage (gespeichert beim Admin-Login)
+    // tenantId from driver session or admin login
     const userRaw = localStorage.getItem('kassomat_user');
-    const tenantId: string = userRaw ? (JSON.parse(userRaw) as { tenantId: string }).tenantId : '';
+    const tenantId: string = localStorage.getItem('kassomat_driver_tenant')
+      ?? (userRaw ? (JSON.parse(userRaw) as { tenantId: string }).tenantId : '');
 
     // Connect socket — tenantId im handshake query damit Server den Raum kennt
     const socket = io(SOCKET_URL, { transports: ['websocket'], query: { tenantId } });
@@ -314,6 +390,11 @@ export default function DriverNavPage() {
 
   if (loadingDrivers) {
     return <div className="min-h-screen bg-[#080a0c] flex items-center justify-center text-white/50">Laden...</div>;
+  }
+
+  // No tenantId known → show tenant code entry
+  if (!tenantReady) {
+    return <TenantCodeScreen onTenantId={() => { setTenantReady(true); }} />;
   }
 
   if (!activeDriver) {
