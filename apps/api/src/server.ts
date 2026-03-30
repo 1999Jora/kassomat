@@ -47,7 +47,8 @@ export async function buildServer() {
         .split(',')
         .map(o => o.trim());
       // Capacitor Android/iOS apps use these origins
-      const capacitorOrigins = ['https://localhost', 'capacitor://localhost', 'http://localhost'];
+      // Capacitor Android/iOS apps + Vercel frontend
+      const capacitorOrigins = ['https://localhost', 'capacitor://localhost', 'http://localhost', 'https://kassomat-pos.vercel.app'];
       if (!origin || process.env['NODE_ENV'] === 'development' || allowed.includes(origin) || capacitorOrigins.includes(origin)) {
         callback(null, true);
       } else {

@@ -5,11 +5,11 @@ const config: CapacitorConfig = {
   appName: 'Kassomat',
   webDir: 'dist',
   server: {
+    // Live-Update: App lädt UI direkt von Vercel.
+    // Frontend-Änderungen kommen sofort ohne APK-Rebuild.
+    // Nur native Änderungen (Bluetooth, Push) brauchen neuen Build.
+    url: 'https://kassomat-pos.vercel.app',
     androidScheme: 'https',
-    // For production: API calls go to Railway.
-    // VITE_API_URL is baked in at build time via .env.android or the
-    // android:build / android:release npm scripts, so the bundled JS
-    // already contains the full https://kassomat-production.up.railway.app URL.
   },
   plugins: {
     StatusBar: {

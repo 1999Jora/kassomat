@@ -3,6 +3,7 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
+    { "source": "/api/(.*)", "destination": "https://kassomat-production.up.railway.app/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

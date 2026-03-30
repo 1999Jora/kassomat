@@ -27,7 +27,7 @@ declare module 'fastify' {
 export default fp(async (fastify: FastifyInstance) => {
   const corsOrigin = (process.env['CORS_ORIGIN'] ?? 'http://localhost:5173').split(',');
   // Capacitor Android/iOS apps use these origins
-  const capacitorOrigins = ['https://localhost', 'capacitor://localhost', 'http://localhost'];
+  const capacitorOrigins = ['https://localhost', 'capacitor://localhost', 'http://localhost', 'https://kassomat-pos.vercel.app'];
   const allOrigins = [...corsOrigin, ...capacitorOrigins];
 
   const io = new SocketIOServer(fastify.server, {
