@@ -1,5 +1,6 @@
 import fp from 'fastify-plugin';
 import { Server as SocketIOServer } from 'socket.io';
+import * as argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import type { JWTPayload } from '@kassomat/types';
 import { RealtimeService } from '../modules/realtime/realtime.service';
@@ -70,10 +71,10 @@ export default fp(async (fastify: FastifyInstance) => {
     if (driverPin && typeof driverPin === 'string' && driverId && typeof driverId === 'string') {
       try {
         const driver = await db.driver.findFirst({
-          where: { id: driverId, pin: driverPin, isActive: true },
-          select: { id: true, tenantId: true, name: true },
+          where: { id: driverId, isActive: true },
+          select: { id: true, tenantId: true, name: true, pin: true },
         });
-        if (driver) {
+        if (driver && await argon2.verify(driver.pin, driverPin)) {
           // Attach verified tenantId from DB (never trust client-supplied tenantId)
           (socket as typeof socket & { verifiedTenantId: string }).verifiedTenantId = driver.tenantId;
           (socket as typeof socket & { driverId: string }).driverId = driver.id;

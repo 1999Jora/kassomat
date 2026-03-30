@@ -300,6 +300,15 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.type('text/html').send(html);
   });
 
+  /** POST /receipts/start — Startbeleg (Inbetriebnahme) */
+  fastify.post('/receipts/start', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const body = z.object({
+      cashRegisterId: z.string().default('KASSE-01'),
+    }).parse(request.body ?? {});
+    const receipt = await service.createStartReceipt(request.tenantId, request.jwtPayload.sub, body.cashRegisterId);
+    return reply.code(201).send({ success: true, data: receipt });
+  });
+
   /** POST /receipts/null — Nullbeleg */
   fastify.post('/receipts/null', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const receipt = await service.createNullReceipt(request.tenantId, request.jwtPayload.sub);

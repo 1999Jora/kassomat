@@ -120,6 +120,50 @@ export function buildReceiptBuffer(receipt: ReceiptData, tenant: TenantInfo): Bu
     b.feed(1);
   }
 
+  // --- Training header ---
+  if (receipt.receiptType === 'training') {
+    b.align('center');
+    b.bold(true);
+    b.fontSize(2);
+    b.text('*** TRAININGSBELEG ***');
+    b.fontSize(1);
+    b.bold(false);
+    b.feed(1);
+  }
+
+  // --- Null receipt header ---
+  if (receipt.receiptType === 'null_receipt') {
+    b.align('center');
+    b.bold(true);
+    b.fontSize(2);
+    b.text('*** NULLBELEG ***');
+    b.fontSize(1);
+    b.bold(false);
+    b.feed(1);
+  }
+
+  // --- Start receipt header ---
+  if (receipt.receiptType === 'start_receipt') {
+    b.align('center');
+    b.bold(true);
+    b.fontSize(2);
+    b.text('*** STARTBELEG ***');
+    b.fontSize(1);
+    b.bold(false);
+    b.feed(1);
+  }
+
+  // --- Closing receipt header ---
+  if (receipt.receiptType === 'closing_receipt') {
+    b.align('center');
+    b.bold(true);
+    b.fontSize(2);
+    b.text('*** SCHLUSSBELEG ***');
+    b.fontSize(1);
+    b.bold(false);
+    b.feed(1);
+  }
+
   // --- Receipt meta ---
   b.align('left');
   b.printLine('Bon-Nr.:', receipt.receiptNumber, WIDTH);
@@ -152,20 +196,28 @@ export function buildReceiptBuffer(receipt: ReceiptData, tenant: TenantInfo): Bu
 
   b.divider(WIDTH);
 
-  // --- Totals ---
-  b.printLine('Netto:', formatEuro(receipt.totals.subtotalNet), WIDTH);
+  // --- Totals — Bemessungsgrundlage (Netto) per VAT rate ---
+  // Calculate net amounts per VAT rate from items
+  const netByRate: Record<number, number> = {};
+  for (const item of receipt.items) {
+    netByRate[item.vatRate] = (netByRate[item.vatRate] ?? 0) + item.totalNet;
+  }
 
-  if (receipt.totals.vat0 > 0) {
-    b.printLine('MwSt 0%:', formatEuro(receipt.totals.vat0), WIDTH);
+  if (netByRate[0] && netByRate[0] > 0) {
+    b.printLine('Netto 0%:', formatEuro(netByRate[0]), WIDTH);
+    b.printLine('  MwSt:', formatEuro(receipt.totals.vat0), WIDTH);
   }
-  if (receipt.totals.vat10 > 0) {
-    b.printLine('MwSt 10%:', formatEuro(receipt.totals.vat10), WIDTH);
+  if (netByRate[10] && netByRate[10] > 0) {
+    b.printLine('Netto 10%:', formatEuro(netByRate[10]), WIDTH);
+    b.printLine('  MwSt:', formatEuro(receipt.totals.vat10), WIDTH);
   }
-  if (receipt.totals.vat13 > 0) {
-    b.printLine('MwSt 13%:', formatEuro(receipt.totals.vat13), WIDTH);
+  if (netByRate[13] && netByRate[13] > 0) {
+    b.printLine('Netto 13%:', formatEuro(netByRate[13]), WIDTH);
+    b.printLine('  MwSt:', formatEuro(receipt.totals.vat13), WIDTH);
   }
-  if (receipt.totals.vat20 > 0) {
-    b.printLine('MwSt 20%:', formatEuro(receipt.totals.vat20), WIDTH);
+  if (netByRate[20] && netByRate[20] > 0) {
+    b.printLine('Netto 20%:', formatEuro(netByRate[20]), WIDTH);
+    b.printLine('  MwSt:', formatEuro(receipt.totals.vat20), WIDTH);
   }
 
   b.bold(true);

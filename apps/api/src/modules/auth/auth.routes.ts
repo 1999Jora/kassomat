@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { AuthService } from './auth.service';
+import { checkLoginRateLimit, recordFailedLogin, clearFailedLogins } from '../../lib/rate-limiter';
 
 const loginSchema = z.object({
   email: z.string().email('Ungültige E-Mail-Adresse'),
@@ -17,8 +18,25 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   /** POST /auth/login */
   fastify.post('/auth/login', async (request, reply) => {
     const body = loginSchema.parse(request.body);
-    const result = await authService.login(body.email, body.password);
-    return reply.code(200).send({ success: true, data: result });
+
+    // Rate limit check
+    const ip = request.ip;
+    const rateLimitResult = checkLoginRateLimit(body.email, ip);
+    if (!rateLimitResult.allowed) {
+      return reply
+        .code(429)
+        .header('Retry-After', String(rateLimitResult.retryAfterSeconds ?? 60))
+        .send({ success: false, error: rateLimitResult.message });
+    }
+
+    try {
+      const result = await authService.login(body.email, body.password);
+      clearFailedLogins(body.email);
+      return reply.code(200).send({ success: true, data: result });
+    } catch (err) {
+      recordFailedLogin(body.email);
+      throw err;
+    }
   });
 
   /** POST /auth/refresh */

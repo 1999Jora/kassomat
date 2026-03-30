@@ -1,4 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import * as argon2 from 'argon2';
 import { prisma } from '../../lib/prisma.js';
 
 // Cast to any until prisma generate picks up the new Delivery model
@@ -18,9 +19,13 @@ async function verifyDriverPin(
     return reply.status(401).send({ error: 'x-driver-pin header required' });
   }
   const driver = await db.driver.findFirst({
-    where: { id: driverId, pin, isActive: true },
+    where: { id: driverId, isActive: true },
   });
   if (!driver) {
+    return reply.status(401).send({ error: 'Falscher PIN oder Fahrer nicht gefunden' });
+  }
+  const valid = await argon2.verify(driver.pin, pin);
+  if (!valid) {
     return reply.status(401).send({ error: 'Falscher PIN oder Fahrer nicht gefunden' });
   }
   return driver;

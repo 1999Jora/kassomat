@@ -353,6 +353,11 @@ export class ReceiptsService {
     return toReceiptResponse(cancelReceipt as ReceiptWithItemsAndStorno);
   }
 
+  /** Startbeleg erstellen (Inbetriebnahme der Registrierkasse) */
+  async createStartReceipt(tenantId: string, cashierId: string, cashRegisterId?: string) {
+    return this._createZeroReceipt(tenantId, cashierId, 'start_receipt', cashRegisterId ?? 'KASSE-01');
+  }
+
   /** Nullbeleg erstellen (RKSV-Test) */
   async createNullReceipt(tenantId: string, cashierId: string) {
     return this._createZeroReceipt(tenantId, cashierId, 'null_receipt');
@@ -372,7 +377,7 @@ export class ReceiptsService {
   private async _createZeroReceipt(
     tenantId: string,
     cashierId: string,
-    type: 'null_receipt' | 'training' | 'closing_receipt',
+    type: 'null_receipt' | 'training' | 'closing_receipt' | 'start_receipt',
     cashRegisterId = 'KASSE-01',
   ) {
     const receipt = await withSerializableRetry(async (tx) => {

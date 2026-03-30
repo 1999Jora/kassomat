@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import * as argon2 from 'argon2';
 import { prisma } from '../../lib/prisma.js';
 import { requireRole } from '../../middleware/auth.js';
 
@@ -37,8 +38,9 @@ export async function driversRoutes(app: FastifyInstance) {
     async (req) => {
       const tenantId = (req.user as any).tenantId;
       const { name, pin, color } = req.body;
+      const hashedPin = await argon2.hash(pin);
       return db.driver.create({
-        data: { tenantId, name, pin, color: color ?? '#4f8ef7' },
+        data: { tenantId, name, pin: hashedPin, color: color ?? '#4f8ef7' },
       });
     }
   );
@@ -49,9 +51,13 @@ export async function driversRoutes(app: FastifyInstance) {
     { preHandler: [app.authenticate, requireRole('owner', 'admin')] },
     async (req) => {
       const tenantId = (req.user as any).tenantId;
+      const data = { ...req.body };
+      if (data.pin) {
+        data.pin = await argon2.hash(data.pin);
+      }
       return db.driver.update({
         where: { id: req.params.id, tenantId },
-        data: req.body,
+        data,
       });
     }
   );
@@ -73,9 +79,11 @@ export async function driversRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { driverId, pin } = req.body;
       const driver = await db.driver.findFirst({
-        where: { id: driverId, pin, isActive: true },
+        where: { id: driverId, isActive: true },
       });
       if (!driver) return reply.status(401).send({ error: 'Falscher PIN' });
+      const valid = await argon2.verify(driver.pin, pin);
+      if (!valid) return reply.status(401).send({ error: 'Falscher PIN' });
       return { ok: true, driver };
     }
   );

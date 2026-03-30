@@ -98,6 +98,30 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
     lines.push({ text: '' });
   }
 
+  // Training header
+  if (receipt.receiptType === 'training') {
+    lines.push({ text: center('*** TRAININGSBELEG ***'), bold: true });
+    lines.push({ text: '' });
+  }
+
+  // Null receipt header
+  if (receipt.receiptType === 'null_receipt') {
+    lines.push({ text: center('*** NULLBELEG ***'), bold: true });
+    lines.push({ text: '' });
+  }
+
+  // Start receipt header
+  if (receipt.receiptType === 'start_receipt') {
+    lines.push({ text: center('*** STARTBELEG ***'), bold: true });
+    lines.push({ text: '' });
+  }
+
+  // Closing receipt header
+  if (receipt.receiptType === 'closing_receipt') {
+    lines.push({ text: center('*** SCHLUSSBELEG ***'), bold: true });
+    lines.push({ text: '' });
+  }
+
   // Meta
   lines.push({ text: leftRight('Bon-Nr.:', receipt.receiptNumber) });
   lines.push({ text: leftRight('Kasse:', receipt.cashRegisterId) });
@@ -121,12 +145,29 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
   }
   lines.push({ text: divider() });
 
-  // Totals
-  lines.push({ text: leftRight('Netto:', fmtEuro(receipt.totals.subtotalNet)) });
-  if (receipt.totals.vat0 > 0) lines.push({ text: leftRight('MwSt 0%:', fmtEuro(receipt.totals.vat0)) });
-  if (receipt.totals.vat10 > 0) lines.push({ text: leftRight('MwSt 10%:', fmtEuro(receipt.totals.vat10)) });
-  if (receipt.totals.vat13 > 0) lines.push({ text: leftRight('MwSt 13%:', fmtEuro(receipt.totals.vat13)) });
-  if (receipt.totals.vat20 > 0) lines.push({ text: leftRight('MwSt 20%:', fmtEuro(receipt.totals.vat20)) });
+  // Totals — Bemessungsgrundlage (Netto) per VAT rate
+  // Calculate net amounts per VAT rate from items
+  const netByRate: Record<number, number> = {};
+  for (const item of receipt.items) {
+    netByRate[item.vatRate] = (netByRate[item.vatRate] ?? 0) + item.totalNet;
+  }
+
+  if (netByRate[0] && netByRate[0] > 0) {
+    lines.push({ text: leftRight('Netto 0%:', fmtEuro(netByRate[0])) });
+    lines.push({ text: leftRight('  MwSt:', fmtEuro(receipt.totals.vat0)) });
+  }
+  if (netByRate[10] && netByRate[10] > 0) {
+    lines.push({ text: leftRight('Netto 10%:', fmtEuro(netByRate[10])) });
+    lines.push({ text: leftRight('  MwSt:', fmtEuro(receipt.totals.vat10)) });
+  }
+  if (netByRate[13] && netByRate[13] > 0) {
+    lines.push({ text: leftRight('Netto 13%:', fmtEuro(netByRate[13])) });
+    lines.push({ text: leftRight('  MwSt:', fmtEuro(receipt.totals.vat13)) });
+  }
+  if (netByRate[20] && netByRate[20] > 0) {
+    lines.push({ text: leftRight('Netto 20%:', fmtEuro(netByRate[20])) });
+    lines.push({ text: leftRight('  MwSt:', fmtEuro(receipt.totals.vat20)) });
+  }
   lines.push({ text: divider('=') });
   lines.push({ text: leftRight('GESAMT:', fmtEuro(receipt.totals.totalGross)), bold: true });
   lines.push({ text: divider() });
