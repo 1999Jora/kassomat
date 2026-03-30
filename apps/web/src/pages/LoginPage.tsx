@@ -138,6 +138,13 @@ export default function LoginPage() {
             Jetzt registrieren
           </Link>
         </p>
+
+        <Link
+          to="/delivery/nav"
+          className="mt-4 block text-center bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white/60 text-sm hover:bg-white/10 hover:text-white transition-colors"
+        >
+          🚗 Fahrer? <span className="text-white/80 font-medium">Mit PIN anmelden</span>
+        </Link>
       </div>
     </div>
   );
