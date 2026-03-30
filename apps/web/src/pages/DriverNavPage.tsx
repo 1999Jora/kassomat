@@ -9,7 +9,9 @@ import type { Driver, Delivery } from '@kassomat/types';
 import { io, Socket } from 'socket.io-client';
 
 const API = import.meta.env.VITE_API_URL as string;
-const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL ?? API) as string;
+// If API URL is relative (/api), Socket.IO must connect directly to Railway
+const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL
+  ?? (API.startsWith('/') ? 'https://kassomat-production.up.railway.app' : API)) as string;
 const DRIVER_COLOR = '#4f8ef7';
 
 // OSRM routing
@@ -186,8 +188,11 @@ export default function DriverNavPage() {
     const tenantId: string = localStorage.getItem('kassomat_driver_tenant')
       ?? (userRaw ? (JSON.parse(userRaw) as { tenantId: string }).tenantId : '');
 
-    // Connect socket — tenantId im handshake query damit Server den Raum kennt
-    const socket = io(SOCKET_URL, { transports: ['websocket'], query: { tenantId } });
+    // Connect socket — auth via driverPin + driverId (server verifies and joins tenant room)
+    const socket = io(SOCKET_URL, {
+      transports: ['websocket', 'polling'],
+      auth: { driverId: driver.id, driverPin },
+    });
     socketRef.current = socket;
     socket.on('delivery:update', (d: Delivery) => {
       if (d.driverId === driver.id) {

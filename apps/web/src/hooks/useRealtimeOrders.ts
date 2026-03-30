@@ -32,8 +32,12 @@ export function useRealtimeOrders() {
     const token = localStorage.getItem('kassomat_access_token');
     if (!token) return;
 
-    const apiUrl = import.meta.env['VITE_API_URL'] ?? '';
-    const socket: Socket = io(apiUrl, {
+    const apiUrl = (import.meta.env['VITE_API_URL'] ?? '') as string;
+    // If API URL is relative (/api), Socket.IO must connect directly to Railway
+    // because Vercel doesn't support WebSocket proxying
+    const socketUrl = (import.meta.env['VITE_SOCKET_URL']
+      ?? (apiUrl.startsWith('/') ? 'https://kassomat-production.up.railway.app' : apiUrl)) as string;
+    const socket: Socket = io(socketUrl, {
       path: '/socket.io',
       auth: (cb) => cb({ token: localStorage.getItem('kassomat_access_token') }),
       transports: ['websocket', 'polling'],
