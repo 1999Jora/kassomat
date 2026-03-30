@@ -287,12 +287,12 @@ export class TenantService {
               defaultDeliveryPayment: tenant.wixDefaultDeliveryPayment,
             }
           : null,
-        mergeport: tenant.mergeportSiteId
+        mergeport: (tenant as Record<string, unknown>).mergeportSiteId
           ? {
-              siteId: tenant.mergeportSiteId,
-              configured: !!tenant.mergeportApiKey_encrypted,
-              apiKeyHint: tenant.mergeportApiKeyHint ?? null,
-              enabled: tenant.mergeportEnabled,
+              siteId: (tenant as Record<string, unknown>).mergeportSiteId as string,
+              configured: !!(tenant as Record<string, unknown>).mergeportApiKey_encrypted,
+              apiKeyHint: ((tenant as Record<string, unknown>).mergeportApiKeyHint as string) ?? null,
+              enabled: ((tenant as Record<string, unknown>).mergeportEnabled as boolean) ?? false,
             }
           : null,
         mypos: tenant.myposStoreId
@@ -345,11 +345,11 @@ export class TenantService {
             defaultDeliveryPayment: tenant.wixDefaultDeliveryPayment,
           }
         : null,
-      mergeport: tenant.mergeportSiteId && tenant.mergeportApiKey_encrypted
+      mergeport: (tenant as Record<string, unknown>).mergeportSiteId && (tenant as Record<string, unknown>).mergeportApiKey_encrypted
         ? {
-            siteId: tenant.mergeportSiteId,
-            apiKey: decrypt(tenant.mergeportApiKey_encrypted),
-            enabled: tenant.mergeportEnabled,
+            siteId: (tenant as Record<string, unknown>).mergeportSiteId as string,
+            apiKey: decrypt((tenant as Record<string, unknown>).mergeportApiKey_encrypted as string),
+            enabled: ((tenant as Record<string, unknown>).mergeportEnabled as boolean) ?? false,
           }
         : null,
       mypos: tenant.myposStoreId && tenant.myposApiKey_encrypted && tenant.myposSecretKey_encrypted
