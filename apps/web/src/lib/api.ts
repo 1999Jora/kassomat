@@ -157,6 +157,11 @@ export async function createTrainingReceipt(): Promise<Receipt> {
   return data.data;
 }
 
+export async function createStartReceipt(cashRegisterId = 'KASSE-01'): Promise<Receipt> {
+  const { data } = await api.post<ApiSuccess<Receipt>>('/receipts/start', { cashRegisterId });
+  return data.data;
+}
+
 export async function createClosingReceipt(cashRegisterId = 'KASSE-01'): Promise<Receipt> {
   const { data } = await api.post<ApiSuccess<Receipt>>('/receipts/closing', { cashRegisterId });
   return data.data;

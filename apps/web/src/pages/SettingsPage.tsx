@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import type { Tenant, TenantSettings, Category, Product } from '@kassomat/types';
-import api, { createNullReceipt, createTrainingReceipt, createClosingReceipt, getPrintMode, setPrintMode, waitForRksvSignature, printReceiptById, getDigitalReceiptUrl, type PrintMode } from '../lib/api';
+import api, { createNullReceipt, createTrainingReceipt, createStartReceipt, createClosingReceipt, getPrintMode, setPrintMode, waitForRksvSignature, printReceiptById, getDigitalReceiptUrl, type PrintMode } from '../lib/api';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -198,25 +198,33 @@ function RksvSonderbelegeSection() {
   const [loading, setLoading] = useState<string | null>(null);
   const [closingId, setClosingId] = useState('KASSE-01');
 
-  async function handle(type: 'null' | 'training' | 'closing') {
+  async function handle(type: 'null' | 'training' | 'start' | 'closing') {
     setLoading(type);
     const mode = getPrintMode();
+    // Popup-Blocker-Fix: Fenster VOR async öffnen
+    const pdfWindow = mode === 'pdf' ? window.open('about:blank', '_blank', 'noopener') : null;
     try {
       let receipt;
       if (type === 'null') receipt = await createNullReceipt();
       else if (type === 'training') receipt = await createTrainingReceipt();
+      else if (type === 'start') receipt = await createStartReceipt(closingId);
       else receipt = await createClosingReceipt(closingId);
 
-      toast.success(type === 'null' ? 'Nullbeleg erstellt' : type === 'training' ? 'Trainingsbeleg erstellt' : 'Schlussbeleg erstellt');
+      const labels: Record<string, string> = {
+        null: 'Nullbeleg', training: 'Trainingsbeleg',
+        start: 'Startbeleg', closing: 'Schlussbeleg',
+      };
+      toast.success(`${labels[type]} erstellt`);
 
       await waitForRksvSignature(receipt.id);
 
       if (mode === 'printer') {
         await printReceiptById(receipt.id);
-      } else if (mode === 'pdf') {
-        window.open(getDigitalReceiptUrl(receipt.id), '_blank', 'noopener');
+      } else if (mode === 'pdf' && pdfWindow) {
+        pdfWindow.location.href = getDigitalReceiptUrl(receipt.id);
       }
     } catch {
+      if (pdfWindow) pdfWindow.close();
       toast.error('Fehler beim Erstellen des Belegs');
     } finally {
       setLoading(null);
@@ -228,6 +236,30 @@ function RksvSonderbelegeSection() {
       <p className="text-xs font-semibold text-white/40 uppercase tracking-wider">RKSV Sonderbelege</p>
 
       <div className="grid grid-cols-1 gap-2">
+        {/* Startbeleg */}
+        <div className="bg-[#080a0c] border border-[#00e87a]/20 rounded-lg px-4 py-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-white/80">Startbeleg</p>
+              <p className="text-xs text-white/40">Kasse in Betrieb nehmen — erster Beleg bei Inbetriebnahme</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handle('start')}
+              disabled={loading !== null}
+              className="text-xs bg-[#00e87a]/10 hover:bg-[#00e87a]/20 text-[#00e87a] border border-[#00e87a]/20 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+            >
+              {loading === 'start' ? '...' : 'Erstellen'}
+            </button>
+          </div>
+          <input
+            value={closingId}
+            onChange={(e) => setClosingId(e.target.value)}
+            className="w-full bg-black/30 border border-white/[0.06] rounded px-2.5 py-1.5 text-xs text-white/60 focus:outline-none focus:border-[#00e87a]/30"
+            placeholder="Kassen-ID (z.B. KASSE-01)"
+          />
+        </div>
+
         {/* Nullbeleg */}
         <div className="flex items-center justify-between bg-[#080a0c] border border-white/[0.06] rounded-lg px-4 py-3">
           <div>
@@ -265,7 +297,7 @@ function RksvSonderbelegeSection() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-white/80">Schlussbeleg</p>
-              <p className="text-xs text-white/40">Kasse außer Betrieb — bei FinanzOnline einreichen</p>
+              <p className="text-xs text-red-400/60">Kasse außer Betrieb — bei FinanzOnline einreichen</p>
             </div>
             <button
               type="button"
@@ -276,12 +308,6 @@ function RksvSonderbelegeSection() {
               {loading === 'closing' ? '...' : 'Erstellen'}
             </button>
           </div>
-          <input
-            value={closingId}
-            onChange={(e) => setClosingId(e.target.value)}
-            className="w-full bg-black/30 border border-white/[0.06] rounded px-2.5 py-1.5 text-xs text-white/60 focus:outline-none focus:border-red-500/30"
-            placeholder="Kassen-ID (z.B. KASSE-01)"
-          />
         </div>
       </div>
     </div>

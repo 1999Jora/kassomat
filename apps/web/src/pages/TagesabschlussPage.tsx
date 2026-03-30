@@ -5,7 +5,7 @@ import { de } from 'date-fns/locale';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import type { AnalyticsData } from '@kassomat/types';
-import api, { getPrintMode, getDigitalReceiptUrl, waitForRksvSignature, printReceiptById, createClosingReceipt } from '../lib/api';
+import api from '../lib/api';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -117,10 +117,6 @@ export default function TagesabschlussPage() {
       return;
     }
 
-    // Open PDF window BEFORE async call (popup blocker)
-    const mode = getPrintMode();
-    const pdfWindow = mode === 'pdf' ? window.open('about:blank', '_blank', 'noopener') : null;
-
     try {
       await closingMutation.mutateAsync({
         cashCount: cashCountCents,
@@ -129,22 +125,7 @@ export default function TagesabschlussPage() {
 
       toast.success('Tagesabschluss erfolgreich durchgeführt');
       setClosingDone(true);
-
-      // Print Z-Bericht via closing receipt
-      try {
-        const closingReceipt = await createClosingReceipt();
-        await waitForRksvSignature(closingReceipt.id);
-        if (mode === 'printer') {
-          await printReceiptById(closingReceipt.id);
-        } else if (mode === 'pdf' && pdfWindow) {
-          pdfWindow.location.href = getDigitalReceiptUrl(closingReceipt.id);
-        }
-      } catch {
-        if (pdfWindow) pdfWindow.close();
-        toast.error('Z-Bericht konnte nicht gedruckt werden');
-      }
     } catch (err: unknown) {
-      if (pdfWindow) pdfWindow.close();
       const message =
         err && typeof err === 'object' && 'response' in err
           ? ((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? 'Tagesabschluss fehlgeschlagen')
