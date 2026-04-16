@@ -13,6 +13,7 @@ export default function Cart() {
     tabs, activeTabId, createTab, switchTab, closeTab, renameTab,
     cartItems, cartChannel, updateQuantity, removeFromCart, clearCart,
     orderType, setOrderType, deliveryInfo, setDeliveryInfo,
+    setDiscount, setNote, note,
   } = useAppStore();
   const [confirmClear, setConfirmClear] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -21,6 +22,20 @@ export default function Cart() {
   const editInputRef = useRef<HTMLInputElement>(null);
   const [confirmCloseId, setConfirmCloseId] = useState<string | null>(null);
   const confirmCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Discount editing
+  const [discountProductId, setDiscountProductId] = useState<string | null>(null);
+  const [discountInput, setDiscountInput] = useState('');
+  const [discountMode, setDiscountMode] = useState<'%' | '€'>('%');
+  const discountInputRef = useRef<HTMLInputElement>(null);
+
+  // Quantity direct input
+  const [editingQtyId, setEditingQtyId] = useState<string | null>(null);
+  const [qtyInput, setQtyInput] = useState('');
+  const qtyInputRef = useRef<HTMLInputElement>(null);
+
+  // Note
+  const [showNote, setShowNote] = useState(false);
 
   const handleClearClick = useCallback(() => {
     if (!confirmClear) {
@@ -61,6 +76,45 @@ export default function Cart() {
     }
     setConfirmCloseId(tabId);
     confirmCloseTimerRef.current = setTimeout(() => setConfirmCloseId(null), 3000);
+  }
+
+  function openDiscountEditor(productId: string, currentDiscount: number) {
+    setDiscountProductId(productId);
+    setDiscountInput(currentDiscount > 0 ? (currentDiscount / 100).toFixed(2).replace('.', ',') : '');
+    setDiscountMode('€');
+    setTimeout(() => discountInputRef.current?.select(), 0);
+  }
+
+  function applyDiscount() {
+    if (!discountProductId) return;
+    const item = cartItems.find((i) => i.productId === discountProductId);
+    if (!item) { setDiscountProductId(null); return; }
+
+    const val = parseFloat(discountInput.replace(',', '.'));
+    if (isNaN(val) || val <= 0) {
+      setDiscount(discountProductId, 0);
+    } else if (discountMode === '%') {
+      const discountCents = Math.round(item.price * item.quantity * val / 100);
+      setDiscount(discountProductId, discountCents);
+    } else {
+      setDiscount(discountProductId, Math.round(val * 100));
+    }
+    setDiscountProductId(null);
+  }
+
+  function startQtyEdit(productId: string, currentQty: number) {
+    setEditingQtyId(productId);
+    setQtyInput(String(currentQty));
+    setTimeout(() => qtyInputRef.current?.select(), 0);
+  }
+
+  function finishQtyEdit() {
+    if (!editingQtyId) return;
+    const qty = parseInt(qtyInput, 10);
+    if (!isNaN(qty) && qty > 0) {
+      updateQuantity(editingQtyId, qty);
+    }
+    setEditingQtyId(null);
   }
 
   const totals = cartItems.reduce(
@@ -171,24 +225,54 @@ export default function Cart() {
             </span>
           )}
         </div>
-        {cartItems.length > 0 && (
+        <div className="flex items-center gap-2">
+          {/* Note toggle */}
           <button
             type="button"
-            onClick={handleClearClick}
+            onClick={() => setShowNote((v) => !v)}
             className={`text-[10px] transition-colors flex items-center gap-1 ${
-              confirmClear
-                ? 'text-red-400 bg-red-900/30 px-2 py-1 rounded-lg font-semibold'
-                : 'text-[#6b7280] hover:text-red-400'
+              note ? 'text-[#00e87a]' : 'text-[#6b7280] hover:text-white'
             }`}
+            title="Bon-Notiz"
           >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
             </svg>
-            {confirmClear ? 'Wirklich leeren?' : 'Leeren'}
+            Notiz
           </button>
-        )}
+          {cartItems.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClearClick}
+              className={`text-[10px] transition-colors flex items-center gap-1 ${
+                confirmClear
+                  ? 'text-red-400 bg-red-900/30 px-2 py-1 rounded-lg font-semibold'
+                  : 'text-[#6b7280] hover:text-red-400'
+              }`}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+              </svg>
+              {confirmClear ? 'Wirklich leeren?' : 'Leeren'}
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Note field */}
+      {showNote && (
+        <div className="px-3 py-2 border-b border-white/[0.06] shrink-0">
+          <input
+            type="text"
+            placeholder="Notiz zum Bon (z.B. ohne Zwiebel, Tisch 5...)"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            className="w-full bg-white/[0.05] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white placeholder-white/25 outline-none focus:border-[#00e87a]/40 transition-colors"
+          />
+        </div>
+      )}
 
       {/* Order type toggle */}
       <div className="px-3 py-2 border-b border-white/[0.06] shrink-0">
@@ -268,57 +352,145 @@ export default function Cart() {
         ) : (
           <div className="divide-y divide-white/[0.04]">
             {cartItems.map((item) => (
-              <div key={item.productId} className="flex items-center gap-2 px-3 py-2.5 hover:bg-white/[0.02] group">
-                {/* Name */}
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-white leading-tight truncate">{item.name}</p>
-                  <p className="text-[10px] text-[#6b7280] mt-0.5 font-mono">
-                    {formatCents(item.price)} · {item.vatRate}% MwSt
-                    {item.discount > 0 && (
-                      <span className="ml-1 text-[#00e87a]">−{formatCents(item.discount)}</span>
+              <div key={item.productId}>
+                <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-white/[0.02] group">
+                  {/* Name */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-white leading-tight truncate">{item.name}</p>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <p className="text-[10px] text-[#6b7280] font-mono">
+                        {formatCents(item.price)} · {item.vatRate}%
+                      </p>
+                      {/* Discount badge / button */}
+                      <button
+                        type="button"
+                        onClick={() => openDiscountEditor(item.productId, item.discount)}
+                        className={`text-[9px] px-1 py-0.5 rounded transition-all ${
+                          item.discount > 0
+                            ? 'bg-[#00e87a]/15 text-[#00e87a] font-medium'
+                            : 'text-white/20 hover:text-[#00e87a] hover:bg-[#00e87a]/10 opacity-0 group-hover:opacity-100'
+                        }`}
+                      >
+                        {item.discount > 0 ? `−${formatCents(item.discount)}` : '% Rabatt'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Qty stepper */}
+                  <div className="flex items-center shrink-0 bg-white/[0.05] rounded-lg border border-white/[0.06] overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+                      className="min-w-[36px] min-h-[36px] flex items-center justify-center text-sm text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                    >
+                      −
+                    </button>
+                    {editingQtyId === item.productId ? (
+                      <input
+                        ref={qtyInputRef}
+                        type="text"
+                        inputMode="numeric"
+                        value={qtyInput}
+                        onChange={(e) => setQtyInput(e.target.value.replace(/\D/g, ''))}
+                        onBlur={finishQtyEdit}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') finishQtyEdit();
+                          if (e.key === 'Escape') setEditingQtyId(null);
+                        }}
+                        className="w-8 text-center text-xs font-mono text-white bg-transparent outline-none"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => startQtyEdit(item.productId, item.quantity)}
+                        className="w-8 text-center text-xs font-mono text-white select-none hover:text-[#00e87a] transition-colors"
+                      >
+                        {item.quantity}
+                      </button>
                     )}
-                  </p>
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                      className="min-w-[36px] min-h-[36px] flex items-center justify-center text-sm text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                    >
+                      +
+                    </button>
+                  </div>
 
-                {/* Qty stepper */}
-                <div className="flex items-center shrink-0 bg-white/[0.05] rounded-lg border border-white/[0.06] overflow-hidden">
+                  {/* Line total */}
+                  <div className="text-right shrink-0 w-14">
+                    <p className="text-xs font-medium font-mono text-white">
+                      {formatCents(item.price * item.quantity - item.discount)}
+                    </p>
+                  </div>
+
+                  {/* Delete */}
                   <button
                     type="button"
-                    onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                    className="min-w-[40px] min-h-[40px] flex items-center justify-center text-sm text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                    onClick={() => removeFromCart(item.productId)}
+                    className="min-w-[24px] min-h-[24px] w-6 h-6 rounded flex items-center justify-center text-white/15 hover:text-red-400 hover:bg-red-900/20 transition-all shrink-0 opacity-60 hover:opacity-100"
                   >
-                    −
-                  </button>
-                  <span className="w-7 text-center text-xs font-mono text-white select-none">
-                    {item.quantity}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                    className="min-w-[40px] min-h-[40px] flex items-center justify-center text-sm text-white/60 hover:text-white hover:bg-white/10 transition-colors"
-                  >
-                    +
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
                   </button>
                 </div>
 
-                {/* Line total */}
-                <div className="text-right shrink-0 w-14">
-                  <p className="text-xs font-medium font-mono text-white">
-                    {formatCents(item.price * item.quantity - item.discount)}
-                  </p>
-                </div>
-
-                {/* Delete */}
-                <button
-                  type="button"
-                  onClick={() => removeFromCart(item.productId)}
-                  className="min-w-[24px] min-h-[24px] w-6 h-6 rounded flex items-center justify-center text-white/15 hover:text-red-400 hover:bg-red-900/20 transition-all shrink-0 opacity-60 hover:opacity-100"
-                >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
+                {/* Discount editor inline */}
+                {discountProductId === item.productId && (
+                  <div className="px-3 pb-2.5 flex items-center gap-1.5">
+                    <div className="flex bg-white/[0.04] rounded-lg overflow-hidden border border-white/[0.06]">
+                      <button
+                        type="button"
+                        onClick={() => setDiscountMode('%')}
+                        className={`px-2.5 py-1.5 text-[10px] font-medium transition-all ${
+                          discountMode === '%' ? 'bg-[#00e87a] text-black' : 'text-white/40 hover:text-white'
+                        }`}
+                      >
+                        %
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDiscountMode('€')}
+                        className={`px-2.5 py-1.5 text-[10px] font-medium transition-all ${
+                          discountMode === '€' ? 'bg-[#00e87a] text-black' : 'text-white/40 hover:text-white'
+                        }`}
+                      >
+                        €
+                      </button>
+                    </div>
+                    <input
+                      ref={discountInputRef}
+                      type="text"
+                      inputMode="decimal"
+                      value={discountInput}
+                      onChange={(e) => setDiscountInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') applyDiscount();
+                        if (e.key === 'Escape') setDiscountProductId(null);
+                      }}
+                      placeholder={discountMode === '%' ? 'z.B. 10' : 'z.B. 2,50'}
+                      className="flex-1 bg-white/[0.05] border border-white/[0.08] rounded-lg px-2 py-1.5 text-xs text-white placeholder-white/25 outline-none focus:border-[#00e87a]/40 w-20"
+                    />
+                    <button
+                      type="button"
+                      onClick={applyDiscount}
+                      className="px-2.5 py-1.5 rounded-lg bg-[#00e87a] text-black text-[10px] font-bold hover:bg-[#00d470] transition-colors"
+                    >
+                      OK
+                    </button>
+                    {item.discount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => { setDiscount(item.productId, 0); setDiscountProductId(null); }}
+                        className="px-2 py-1.5 rounded-lg text-[10px] text-red-400 hover:bg-red-900/20 transition-colors"
+                      >
+                        Entf.
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

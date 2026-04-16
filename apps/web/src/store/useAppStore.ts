@@ -26,6 +26,7 @@ export interface OpenTab {
   deliveryInfo: DeliveryInfo;
   tableId: string | null;
   tableLabel: string | null;
+  note: string;
 }
 
 const MAX_TABS = 8;
@@ -43,6 +44,7 @@ function createEmptyTab(label?: string, tableId?: string | null): OpenTab {
     deliveryInfo: { name: '', street: '', city: '' },
     tableId: tableId ?? null,
     tableLabel: tableId ? (label ?? null) : null,
+    note: '',
   };
 }
 
@@ -57,6 +59,7 @@ function deriveCart(tabs: OpenTab[], activeTabId: string) {
     cartExternalOrderId: tab.externalOrderId,
     orderType: tab.orderType,
     deliveryInfo: tab.deliveryInfo,
+    note: tab.note,
   };
 }
 
@@ -91,13 +94,16 @@ interface AppState {
   cartExternalOrderId: string | null;
   orderType: 'dine_in' | 'delivery';
   deliveryInfo: DeliveryInfo;
+  note: string;
 
   setOrderType: (type: 'dine_in' | 'delivery') => void;
   setDeliveryInfo: (info: Partial<DeliveryInfo>) => void;
   addToCart: (item: Omit<CartItem, 'quantity' | 'discount'>) => void;
   updateQuantity: (productId: string, quantity: number) => void;
+  setDiscount: (productId: string, discount: number) => void;
   removeFromCart: (productId: string) => void;
   clearCart: () => void;
+  setNote: (note: string) => void;
 
   // Payment
   paymentMethod: 'cash' | 'card' | 'online';
@@ -142,6 +148,7 @@ export const useAppStore = create<AppState>((set) => ({
   cartExternalOrderId: initialTab.externalOrderId,
   orderType: initialTab.orderType,
   deliveryInfo: initialTab.deliveryInfo,
+  note: initialTab.note,
 
   createTab: (label) => set((state) => {
     if (state.tabs.length >= MAX_TABS) return state;
@@ -158,7 +165,7 @@ export const useAppStore = create<AppState>((set) => ({
   closeTab: (id) => set((state) => {
     if (state.tabs.length <= 1) {
       // Last tab — just clear it
-      const tab = { ...state.tabs[0]!, items: [], externalOrderId: null, channel: 'direct' as const, orderType: 'dine_in' as const, deliveryInfo: emptyDelivery, tableId: null, tableLabel: null };
+      const tab = { ...state.tabs[0]!, items: [], externalOrderId: null, channel: 'direct' as const, orderType: 'dine_in' as const, deliveryInfo: emptyDelivery, tableId: null, tableLabel: null, note: '' };
       const tabs = [tab];
       return { tabs, ...deriveCart(tabs, tab.id) };
     }
@@ -222,6 +229,13 @@ export const useAppStore = create<AppState>((set) => ({
           : tab.items.map((i) => (i.productId === productId ? { ...i, quantity } : i)),
     }))),
 
+  setDiscount: (productId, discount) =>
+    set((state) => setActiveTab(state, (tab) => ({
+      items: tab.items.map((i) =>
+        i.productId === productId ? { ...i, discount: Math.max(0, discount) } : i,
+      ),
+    }))),
+
   removeFromCart: (productId) =>
     set((state) => setActiveTab(state, (tab) => ({
       items: tab.items.filter((i) => i.productId !== productId),
@@ -236,7 +250,11 @@ export const useAppStore = create<AppState>((set) => ({
       deliveryInfo: emptyDelivery,
       tableId: null,
       tableLabel: null,
+      note: '',
     }))),
+
+  setNote: (note) =>
+    set((state) => setActiveTab(state, () => ({ note }))),
 
   // ── Payment ───────────────────────────────────────────────────────────────
   paymentMethod: 'cash',

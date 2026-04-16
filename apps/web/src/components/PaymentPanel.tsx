@@ -2,12 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { formatCents } from '../lib/formatters';
 import NumPad from './NumPad';
-import api, { createReceipt, cancelReceipt, printReceiptById, getDigitalReceiptUrl, getPrintMode, waitForRksvSignature } from '../lib/api';
+import api, { createReceipt, cancelReceipt, printReceiptById, getDigitalReceiptUrl, getPrintMode, waitForRksvSignature, getReceipts } from '../lib/api';
 import { printReceipt as printViaBluetooth } from '../lib/bluetooth-printer';
 import { printLieferbon } from '../lib/print-lieferbon';
 import type { Receipt } from '@kassomat/types';
 import { io, Socket } from 'socket.io-client';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 
 const PAYMENT_METHODS = [
@@ -224,6 +224,98 @@ function SuccessScreen({
       {stornoState === 'done' && (
         <p className="mt-2 text-red-400 text-xs font-medium">Bon storniert</p>
       )}
+    </div>
+  );
+}
+
+// ─── Recent receipts ─────────────────────────────────────────────────────────
+
+function RecentReceipts({ onReprint }: { onReprint: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const { data } = useQuery({
+    queryKey: ['receipts-recent'],
+    queryFn: () => getReceipts({ pageSize: 5, page: 1 }),
+    staleTime: 30_000,
+    enabled: open,
+  });
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full px-3 py-2 border-b border-white/[0.06] text-[10px] text-[#6b7280] hover:text-white flex items-center gap-1.5 transition-colors"
+      >
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M12 8v4l3 3" />
+          <circle cx="12" cy="12" r="10" />
+        </svg>
+        Letzte Bons
+        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="ml-auto">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+    );
+  }
+
+  const receipts = data?.items ?? [];
+  const formatTime = (d: string | Date) => {
+    const date = typeof d === 'string' ? new Date(d) : d;
+    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="border-b border-white/[0.06]">
+      <button
+        type="button"
+        onClick={() => setOpen(false)}
+        className="w-full px-3 py-2 text-[10px] text-white/50 flex items-center gap-1.5 transition-colors hover:text-white"
+      >
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M12 8v4l3 3" />
+          <circle cx="12" cy="12" r="10" />
+        </svg>
+        Letzte Bons
+        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="ml-auto rotate-180">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      <div className="px-2 pb-2 space-y-0.5">
+        {receipts.length === 0 && (
+          <p className="text-[10px] text-white/20 px-2 py-1">Keine Bons vorhanden</p>
+        )}
+        {receipts.map((r: Receipt) => (
+          <div
+            key={r.id}
+            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/[0.03] group"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] text-white/60 truncate font-mono">
+                #{r.receiptNumber ?? r.id.slice(0, 8)}
+              </p>
+              <p className="text-[9px] text-white/25">
+                {formatTime(r.createdAt)} · {r.payment?.method === 'cash' ? 'Bar' : r.payment?.method === 'card' ? 'Karte' : 'Online'}
+                {r.status === 'cancelled' && <span className="text-red-400 ml-1">STORNO</span>}
+              </p>
+            </div>
+            <span className="text-[10px] font-mono text-white/50 shrink-0">
+              {formatCents(r.totals?.totalGross ?? 0)}
+            </span>
+            <button
+              type="button"
+              onClick={() => onReprint(r.id)}
+              className="p-1 rounded text-white/20 hover:text-[#00e87a] hover:bg-[#00e87a]/10 transition-all opacity-0 group-hover:opacity-100"
+              title="Nachdruck"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="6 9 6 2 18 2 18 9" />
+                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                <rect x="6" y="14" width="12" height="8" />
+              </svg>
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -704,10 +796,34 @@ export default function PaymentPanel() {
     return <SuccessScreen change={change} signed={signed} onStorno={handleStorno} stornoState={stornoState} />;
   }
 
+  // ── Reprint handler ────────────────────────────────────────────────────────
+
+  async function handleReprint(receiptId: string) {
+    const mode = getPrintMode();
+    try {
+      if (mode === 'printer') {
+        await printReceiptById(receiptId);
+        toast.success('Bon nachgedruckt');
+      } else if (mode === 'bluetooth') {
+        await printViaBluetooth(receiptId);
+        toast.success('Bon nachgedruckt');
+      } else if (mode === 'pdf') {
+        window.open(getDigitalReceiptUrl(receiptId), '_blank', 'noopener');
+      } else {
+        window.open(getDigitalReceiptUrl(receiptId), '_blank', 'noopener');
+      }
+    } catch {
+      toast.error('Nachdruck fehlgeschlagen');
+    }
+  }
+
   // ── Main panel ────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col h-full overflow-y-auto scrollbar-none">
+      {/* Recent receipts (collapsible) */}
+      <RecentReceipts onReprint={handleReprint} />
+
       {/* Payment method selector */}
       <div className="px-3 pt-3 pb-2.5 border-b border-white/[0.06] shrink-0">
         <p className="text-[10px] text-[#6b7280] uppercase tracking-wider mb-2">Zahlungsart</p>
