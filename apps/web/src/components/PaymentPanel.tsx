@@ -3,6 +3,7 @@ import { useAppStore } from '../store/useAppStore';
 import { formatCents } from '../lib/formatters';
 import NumPad from './NumPad';
 import api, { createReceipt, cancelReceipt, printReceiptById, getDigitalReceiptUrl, getPrintMode, waitForRksvSignature } from '../lib/api';
+import { printReceipt as printViaBluetooth } from '../lib/bluetooth-printer';
 import { printLieferbon } from '../lib/print-lieferbon';
 import type { Receipt } from '@kassomat/types';
 import { io, Socket } from 'socket.io-client';
@@ -486,6 +487,8 @@ export default function PaymentPanel() {
             await waitForRksvSignature(stornoReceipt.id);
             if (mode === 'printer') {
               await printReceiptById(stornoReceipt.id);
+            } else if (mode === 'bluetooth') {
+              await printViaBluetooth(stornoReceipt.id);
             } else if (mode === 'pdf') {
               window.open(getDigitalReceiptUrl(stornoReceipt.id), '_blank', 'noopener');
             }
@@ -518,6 +521,12 @@ export default function PaymentPanel() {
         await printReceiptById(receiptId);
       } catch {
         // Print errors are non-fatal
+      }
+    } else if (mode === 'bluetooth') {
+      try {
+        await printViaBluetooth(receiptId);
+      } catch (err) {
+        toast.error(`Bluetooth-Druck fehlgeschlagen: ${err instanceof Error ? err.message : 'Unbekannter Fehler'}`);
       }
     } else if (mode === 'pdf') {
       // Direkt nach Signierung öffnen — kein about:blank mehr

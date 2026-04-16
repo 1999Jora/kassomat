@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { ReceiptsService } from './receipts.service';
-import { printReceipt, printKitchenOrder, generateDigitalReceiptHTML } from '@kassomat/print';
+import { printReceipt, printKitchenOrder, buildReceiptBuffer, generateDigitalReceiptHTML } from '@kassomat/print';
 import type { ReceiptData, TenantInfo, PrinterConfig, KitchenOrder } from '@kassomat/print';
 import { prisma } from '../../lib/prisma';
 
@@ -251,6 +251,96 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
       data: {
         receiptUrl: digitalUrl,
       },
+    });
+  });
+
+  /** GET /receipts/:id/print-buffer — Return ESC/POS buffer as base64 (for Bluetooth printing) */
+  fastify.get('/receipts/:id/print-buffer', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const receipt = await service.getById(request.tenantId, id);
+
+    if (!receipt.rksv.signedAt) {
+      return reply.code(202).send({
+        success: false,
+        error: { code: 'NOT_SIGNED_YET', message: 'Bon wird noch signiert.' },
+      });
+    }
+
+    const tenant = await fastify.prisma.tenant.findUnique({ where: { id: request.tenantId } });
+    if (!tenant) {
+      return reply.code(404).send({ success: false, error: { code: 'TENANT_NOT_FOUND', message: 'Tenant nicht gefunden.' } });
+    }
+
+    const cashier = await fastify.prisma.user.findUnique({
+      where: { id: receipt.cashierId },
+      select: { name: true },
+    });
+
+    const receiptData: ReceiptData = {
+      id: receipt.id,
+      receiptNumber: receipt.receiptNumber,
+      cashRegisterId: receipt.cashRegisterId,
+      type: receipt.type as ReceiptData['type'],
+      createdAt: receipt.createdAt,
+      cashierName: cashier?.name ?? receipt.cashierId,
+      items: receipt.items.map((item) => ({
+        productName: item.productName,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        vatRate: item.vatRate as 0 | 10 | 13 | 20,
+        discount: item.discount,
+        totalNet: item.totalNet,
+        totalVat: item.totalVat,
+        totalGross: item.totalGross,
+      })),
+      payment: {
+        method: receipt.payment.method,
+        amountPaid: receipt.payment.amountPaid,
+        change: receipt.payment.change,
+        tip: receipt.payment.tip,
+      },
+      totals: {
+        subtotalNet: receipt.totals.subtotalNet,
+        vat0: receipt.totals.vat0,
+        vat10: receipt.totals.vat10,
+        vat13: receipt.totals.vat13,
+        vat20: receipt.totals.vat20,
+        totalVat: receipt.totals.totalVat,
+        totalGross: receipt.totals.totalGross,
+      },
+      rksvQrCodeData: receipt.rksv.qrCodeData || null,
+      rksvBelegnummer: receipt.rksv.belegnummer || null,
+      rksvRegistrierkasseId: receipt.rksv.registrierkasseId || null,
+      rksvCertSerial: receipt.rksv.atCertificateSerial || null,
+      receiptStatus: receipt.status as ReceiptData['receiptStatus'],
+      receiptType: receipt.type,
+      cancelledReceiptNumber: receipt.cancelledReceipt?.receiptNumber ?? undefined,
+    };
+
+    const tenantInfo: TenantInfo = {
+      id: tenant.id,
+      name: tenant.name,
+      slug: tenant.slug,
+      address: tenant.address ?? undefined,
+      city: tenant.city ?? undefined,
+      vatNumber: tenant.vatNumber ?? null,
+      receiptFooter: tenant.receiptFooter ?? null,
+      printerIp: tenant.printerIp ?? null,
+      printerPort: tenant.printerPort ?? null,
+      logoBase64: tenant.logoBase64 ?? null,
+    };
+
+    const buffer = buildReceiptBuffer(receiptData, tenantInfo);
+
+    // Mark as printed
+    await fastify.prisma.receipt.update({
+      where: { id: receipt.id },
+      data: { status: 'printed' },
+    });
+
+    return reply.send({
+      success: true,
+      data: { buffer: buffer.toString('base64') },
     });
   });
 

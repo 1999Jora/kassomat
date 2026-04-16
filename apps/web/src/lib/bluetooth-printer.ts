@@ -136,11 +136,8 @@ export async function reconnectSavedPrinter(): Promise<boolean> {
 }
 
 /**
- * High-level: fetch ESC/POS data for a receipt from the API,
+ * High-level: fetch ESC/POS buffer for a receipt from the API,
  * then send it to the connected Bluetooth printer.
- *
- * The endpoint `GET /receipts/:id/print` already returns ESC/POS data
- * when requested with Accept: application/octet-stream.
  */
 export async function printReceipt(receiptId: string): Promise<void> {
   const connected = await isConnected();
@@ -154,15 +151,21 @@ export async function printReceipt(receiptId: string): Promise<void> {
     }
   }
 
-  // Fetch raw ESC/POS bytes from the API
-  const response = await api.get<ArrayBuffer>(`/receipts/${receiptId}/print`, {
-    responseType: 'arraybuffer',
-    headers: { Accept: 'application/octet-stream' },
-  });
+  // Fetch ESC/POS buffer as base64 from the API
+  const response = await api.get<{ success: boolean; data: { buffer: string } }>(
+    `/receipts/${receiptId}/print-buffer`,
+  );
 
-  const escposData = new Uint8Array(response.data);
-  if (escposData.length === 0) {
+  const base64 = response.data.data.buffer;
+  if (!base64) {
     throw new Error('Keine Druckdaten vom Server erhalten.');
+  }
+
+  // Decode base64 to Uint8Array
+  const binaryString = atob(base64);
+  const escposData = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    escposData[i] = binaryString.charCodeAt(i);
   }
 
   await print(escposData);

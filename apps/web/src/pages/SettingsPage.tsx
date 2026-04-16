@@ -4,6 +4,7 @@ import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import type { Tenant, TenantSettings, Category, Product } from '@kassomat/types';
 import api, { createNullReceipt, createTrainingReceipt, createStartReceipt, createClosingReceipt, getPrintMode, setPrintMode, waitForRksvSignature, printReceiptById, getDigitalReceiptUrl, type PrintMode } from '../lib/api';
+import { scanDevices, connect, disconnect, isConnected, getSavedPrinterName, getSavedPrinterAddress, clearSavedPrinter, isBluetoothPrintingAvailable, type BluetoothDevice as BtDevice } from '../lib/bluetooth-printer';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1139,6 +1140,132 @@ function MyPOSTab({ settings }: { settings: TenantSettings }) {
 
 // ─── Printer tab ──────────────────────────────────────────────────────────────
 
+function BluetoothPrinterSection() {
+  const [scanning, setScanning] = useState(false);
+  const [devices, setDevices] = useState<BtDevice[]>([]);
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [connected, setConnected] = useState(false);
+  const [savedName, setSavedName] = useState(getSavedPrinterName());
+  const [savedAddress, setSavedAddress] = useState(getSavedPrinterAddress());
+
+  // Check connection on mount
+  useState(() => {
+    void isConnected().then(setConnected);
+  });
+
+  async function handleScan() {
+    setScanning(true);
+    try {
+      const found = await scanDevices();
+      setDevices(found);
+      if (found.length === 0) {
+        toast.error('Keine Bluetooth-Drucker gefunden');
+      }
+    } catch (err) {
+      toast.error(`Scan fehlgeschlagen: ${err instanceof Error ? err.message : 'Fehler'}`);
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function handleConnect(device: BtDevice) {
+    setConnecting(device.address);
+    try {
+      await connect(device.address, device.name);
+      setConnected(true);
+      setSavedName(device.name);
+      setSavedAddress(device.address);
+      toast.success(`Verbunden: ${device.name}`);
+    } catch (err) {
+      toast.error(`Verbindung fehlgeschlagen: ${err instanceof Error ? err.message : 'Fehler'}`);
+    } finally {
+      setConnecting(null);
+    }
+  }
+
+  async function handleDisconnect() {
+    try {
+      await disconnect();
+      setConnected(false);
+      clearSavedPrinter();
+      setSavedName(null);
+      setSavedAddress(null);
+      toast.success('Bluetooth-Drucker getrennt');
+    } catch {
+      toast.error('Trennen fehlgeschlagen');
+    }
+  }
+
+  return (
+    <div className="space-y-3 border border-white/10 rounded-xl p-4 bg-[#080a0c]">
+      <p className="text-xs font-semibold text-white/40 uppercase tracking-wider">Bluetooth-Drucker</p>
+
+      {!isBluetoothPrintingAvailable() && (
+        <div className="text-xs text-yellow-400/70 bg-yellow-400/10 border border-yellow-400/20 rounded-lg p-3">
+          Bluetooth-Druck ist nur in der Android-App verfügbar. Im Browser bitte &quot;Netzwerk-Drucker&quot; oder &quot;PDF&quot; verwenden.
+        </div>
+      )}
+
+      {savedName && savedAddress ? (
+        <div className="flex items-center justify-between bg-white/[0.04] rounded-lg px-4 py-3">
+          <div>
+            <p className="text-sm text-white/80 font-medium">{savedName}</p>
+            <p className="text-[10px] text-white/30 font-mono">{savedAddress}</p>
+            <p className={clsx('text-[10px] mt-0.5', connected ? 'text-[#00e87a]' : 'text-white/30')}>
+              {connected ? 'Verbunden' : 'Nicht verbunden'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleDisconnect}
+            className="text-xs text-red-400 hover:text-red-300 transition-colors"
+          >
+            Trennen
+          </button>
+        </div>
+      ) : (
+        <p className="text-xs text-white/40">Kein Drucker verbunden</p>
+      )}
+
+      <button
+        type="button"
+        onClick={handleScan}
+        disabled={scanning}
+        className="text-xs bg-[#00e87a]/10 hover:bg-[#00e87a]/20 text-[#00e87a] border border-[#00e87a]/20 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 w-full"
+      >
+        {scanning ? 'Suche...' : 'Drucker suchen'}
+      </button>
+
+      {devices.length > 0 && (
+        <div className="space-y-1.5">
+          {devices.map((d) => (
+            <button
+              key={d.address}
+              type="button"
+              onClick={() => handleConnect(d)}
+              disabled={connecting !== null}
+              className="w-full flex items-center justify-between bg-white/[0.04] hover:bg-white/[0.08] rounded-lg px-4 py-2.5 text-left transition-colors"
+            >
+              <div>
+                <p className="text-sm text-white/80">{d.name || 'Unbekannt'}</p>
+                <p className="text-[10px] text-white/30 font-mono">{d.address}</p>
+              </div>
+              {connecting === d.address ? (
+                <svg className="animate-spin w-4 h-4 text-[#00e87a]" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <span className="text-xs text-[#00e87a]">Verbinden</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PrinterTab({ settings, isGastro }: { settings: TenantSettings; isGastro: boolean }) {
   const qc = useQueryClient();
 
@@ -1188,7 +1315,8 @@ function PrinterTab({ settings, isGastro }: { settings: TenantSettings; isGastro
   };
 
   const printModes: { id: PrintMode; label: string; desc: string }[] = [
-    { id: 'printer', label: 'Bondrucker', desc: 'ESC/POS an konfigurierten Drucker senden' },
+    { id: 'bluetooth', label: 'Bluetooth', desc: 'Über Bluetooth an verbundenen Drucker senden' },
+    { id: 'printer', label: 'Netzwerk-Drucker', desc: 'ESC/POS an konfigurierten Netzwerk-Drucker senden' },
     { id: 'pdf', label: 'PDF / Browser', desc: 'Digitalen Bon im Browser-Tab öffnen' },
     { id: 'none', label: 'Kein Druck', desc: 'Nur Bon erstellen, nicht drucken' },
   ];
@@ -1225,9 +1353,13 @@ function PrinterTab({ settings, isGastro }: { settings: TenantSettings; isGastro
         </div>
       </Field>
 
+      {printMode === 'bluetooth' && (
+        <BluetoothPrinterSection />
+      )}
+
       <div className="border-t border-white/[0.06] pt-5" />
 
-      <Field label="Druckertyp">
+      <Field label="Netzwerk-Drucker (optional)">
         <div className="flex gap-2">
           {printerTypes.map((t) => (
             <button
