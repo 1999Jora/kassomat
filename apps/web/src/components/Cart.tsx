@@ -9,9 +9,18 @@ const CHANNEL_CONFIG: Record<string, { label: string; cls: string }> = {
 };
 
 export default function Cart() {
-  const { cartItems, cartChannel, updateQuantity, removeFromCart, clearCart, orderType, setOrderType, deliveryInfo, setDeliveryInfo } = useAppStore();
+  const {
+    tabs, activeTabId, createTab, switchTab, closeTab, renameTab,
+    cartItems, cartChannel, updateQuantity, removeFromCart, clearCart,
+    orderType, setOrderType, deliveryInfo, setDeliveryInfo,
+  } = useAppStore();
   const [confirmClear, setConfirmClear] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [editingTabId, setEditingTabId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState('');
+  const editInputRef = useRef<HTMLInputElement>(null);
+  const [confirmCloseId, setConfirmCloseId] = useState<string | null>(null);
+  const confirmCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleClearClick = useCallback(() => {
     if (!confirmClear) {
@@ -23,6 +32,36 @@ export default function Cart() {
       clearCart();
     }
   }, [confirmClear, clearCart]);
+
+  function startRename(tabId: string, currentLabel: string) {
+    setEditingTabId(tabId);
+    setEditLabel(currentLabel);
+    setTimeout(() => editInputRef.current?.select(), 0);
+  }
+
+  function finishRename() {
+    if (editingTabId && editLabel.trim()) {
+      renameTab(editingTabId, editLabel.trim());
+    }
+    setEditingTabId(null);
+  }
+
+  function handleCloseTab(tabId: string) {
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab || tab.items.length === 0) {
+      closeTab(tabId);
+      setConfirmCloseId(null);
+      return;
+    }
+    if (confirmCloseId === tabId) {
+      if (confirmCloseTimerRef.current) clearTimeout(confirmCloseTimerRef.current);
+      closeTab(tabId);
+      setConfirmCloseId(null);
+      return;
+    }
+    setConfirmCloseId(tabId);
+    confirmCloseTimerRef.current = setTimeout(() => setConfirmCloseId(null), 3000);
+  }
 
   const totals = cartItems.reduce(
     (acc, item) => {
@@ -46,23 +85,83 @@ export default function Cart() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 h-11 border-b border-white/[0.06] shrink-0">
-        <div className="flex items-center gap-2">
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            className="text-white/40"
+      {/* Tab bar */}
+      <div className="flex items-center gap-0.5 px-1.5 py-1.5 border-b border-white/[0.06] shrink-0 overflow-x-auto scrollbar-none">
+        {tabs.map((tab) => {
+          const isActive = tab.id === activeTabId;
+          const itemCount = tab.items.reduce((s, i) => s + i.quantity, 0);
+          return (
+            <div
+              key={tab.id}
+              className={`group flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-medium cursor-pointer transition-all shrink-0 border ${
+                isActive
+                  ? 'bg-[#00e87a]/10 text-[#00e87a] border-[#00e87a]/20'
+                  : 'bg-white/[0.03] text-white/40 border-white/[0.04] hover:bg-white/[0.06] hover:text-white/60'
+              }`}
+              onClick={() => switchTab(tab.id)}
+              onDoubleClick={() => startRename(tab.id, tab.label)}
+            >
+              {editingTabId === tab.id ? (
+                <input
+                  ref={editInputRef}
+                  value={editLabel}
+                  onChange={(e) => setEditLabel(e.target.value)}
+                  onBlur={finishRename}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') finishRename();
+                    if (e.key === 'Escape') setEditingTabId(null);
+                  }}
+                  className="w-16 bg-transparent border-none outline-none text-[10px] text-white font-medium"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <span className="truncate max-w-[80px]">{tab.label}</span>
+              )}
+              {itemCount > 0 && (
+                <span className={`px-1 py-0.5 rounded-full text-[8px] font-bold min-w-[14px] text-center leading-none ${
+                  isActive ? 'bg-[#00e87a]/20 text-[#00e87a]' : 'bg-white/[0.06] text-white/30'
+                }`}>
+                  {itemCount}
+                </span>
+              )}
+              {tabs.length > 1 && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleCloseTab(tab.id); }}
+                  className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all ${
+                    confirmCloseId === tab.id
+                      ? 'text-red-400 bg-red-900/30'
+                      : 'text-white/15 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100'
+                  }`}
+                  title={confirmCloseId === tab.id ? 'Nochmal klicken zum Schließen' : 'Tab schließen'}
+                >
+                  <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          );
+        })}
+        {tabs.length < 8 && (
+          <button
+            type="button"
+            onClick={() => createTab()}
+            className="w-7 h-7 rounded-lg border border-dashed border-white/[0.08] flex items-center justify-center text-white/20 hover:text-[#00e87a] hover:border-[#00e87a]/30 transition-all shrink-0"
+            title="Neuer Bon"
           >
-            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <path d="M16 10a4 4 0 0 1-8 0" />
-          </svg>
-          <span className="text-xs font-semibold text-white/80">Bon</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+        )}
+      </div>
+
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 h-9 border-b border-white/[0.06] shrink-0">
+        <div className="flex items-center gap-2">
           <span className={`px-1.5 py-0.5 rounded border text-[9px] font-medium ${channel.cls}`}>
             {channel.label}
           </span>

@@ -235,6 +235,9 @@ export default function PaymentPanel() {
     paymentMethod,
     setPaymentMethod,
     clearCart,
+    closeTab,
+    activeTabId,
+    tabs,
     cardPaymentState,
     setCardPaymentState,
     setMobileTab,
@@ -528,7 +531,12 @@ export default function PaymentPanel() {
 
     // After print/pdf, clear cart after short delay
     setTimeout(() => {
-      clearCart();
+      // Close tab if multiple tabs open, otherwise just clear
+      if (tabs.length > 1) {
+        closeTab(activeTabId);
+      } else {
+        clearCart();
+      }
       setCashInput('');
       setBillCounts({});
       setShowNumPad(false);
