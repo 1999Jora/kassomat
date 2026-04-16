@@ -170,7 +170,7 @@ export default function HomeScreen() {
       </motion.div>
 
       {/* Tiles */}
-      <div className="relative grid grid-cols-2 gap-3 w-full max-w-[340px]">
+      <div className="relative grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 w-full max-w-[720px]">
         {visibleTiles.map((tile, i) => (
           <motion.button
             key={tile.id}
