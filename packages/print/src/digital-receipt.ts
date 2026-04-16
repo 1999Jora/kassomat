@@ -207,7 +207,7 @@ export async function generateDigitalReceiptHTML(receipt: ReceiptData, tenant: T
   }
 
   // Footer
-  const footer = tenant.receiptFooter ?? 'Danke fuer Ihren Besuch!';
+  const footer = tenant.receiptFooter ?? 'Danke für Ihren Besuch!';
 
   // Logo
   const logoHtml = tenant.logoBase64

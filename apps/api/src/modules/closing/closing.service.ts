@@ -95,7 +95,7 @@ export class ClosingService {
     const receiptCount = salesOnly.length;
     const averageReceiptValue = receiptCount > 0 ? Math.round(salesOnly.reduce((s, r) => s + r.totalGross, 0) / receiptCount) : 0;
 
-    const revenueByChannel: Record<string, number> = { direct: 0, lieferando: 0, wix: 0 };
+    const revenueByChannel: Record<string, number> = { direct: 0, lieferando: 0, wix: 0, mergeport: 0 };
     const revenueByPayment: Record<string, number> = { cash: 0, card: 0, online: 0 };
     const vatBreakdown = { vat0: 0, vat10: 0, vat13: 0, vat20: 0 };
     const productTotals = new Map<string, { productName: string; quantity: number; revenue: number }>();

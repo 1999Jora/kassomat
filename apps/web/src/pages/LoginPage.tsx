@@ -36,7 +36,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { data } = await api.post<{ success: true; data: AuthResponse }>('/auth/login', { email, password });
-      login(data.data.accessToken, data.data.user);
+      login(data.data.accessToken, data.data.refreshToken, data.data.user);
       navigate('/dashboard');
     } catch (err: unknown) {
       if (

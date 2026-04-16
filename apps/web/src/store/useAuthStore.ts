@@ -4,7 +4,7 @@ import type { PublicUser } from '@kassomat/types';
 interface AuthState {
   token: string | null;
   user: PublicUser | null;
-  login: (token: string, user: PublicUser) => void;
+  login: (token: string, refreshToken: string, user: PublicUser) => void;
   logout: () => void;
 }
 
@@ -25,13 +25,15 @@ function getInitialUser(): PublicUser | null {
 const useAuthStore = create<AuthState>((set) => ({
   token: getInitialToken(),
   user: getInitialUser(),
-  login: (token: string, user: PublicUser) => {
+  login: (token: string, refreshToken: string, user: PublicUser) => {
     localStorage.setItem('kassomat_access_token', token);
+    localStorage.setItem('kassomat_refresh_token', refreshToken);
     localStorage.setItem('kassomat_user', JSON.stringify(user));
     set({ token, user });
   },
   logout: () => {
     localStorage.removeItem('kassomat_access_token');
+    localStorage.removeItem('kassomat_refresh_token');
     localStorage.removeItem('kassomat_user');
     set({ token: null, user: null });
   },

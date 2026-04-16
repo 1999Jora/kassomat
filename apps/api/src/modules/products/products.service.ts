@@ -141,7 +141,7 @@ export class ProductsService {
         }
 
         const price = Math.round(parseFloat(priceStr.replace(',', '.')) * 100);
-        const vat = [0, 10, 20].includes(Number(vatStr)) ? Number(vatStr) : 20;
+        const vat = [0, 10, 13, 20].includes(Number(vatStr)) ? Number(vatStr) : 20;
 
         await prisma.product.create({
           data: {

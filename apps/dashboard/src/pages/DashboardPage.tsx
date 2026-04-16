@@ -209,9 +209,10 @@ export default function DashboardPage() {
               value={formatEur(
                 analyticsData.vatBreakdown.vat0 +
                   analyticsData.vatBreakdown.vat10 +
+                  (analyticsData.vatBreakdown.vat13 ?? 0) +
                   analyticsData.vatBreakdown.vat20,
               )}
-              sub={`10%: ${formatEur(analyticsData.vatBreakdown.vat10)} | 20%: ${formatEur(analyticsData.vatBreakdown.vat20)}`}
+              sub={`10%: ${formatEur(analyticsData.vatBreakdown.vat10)}${(analyticsData.vatBreakdown.vat13 ?? 0) > 0 ? ` | 13%: ${formatEur(analyticsData.vatBreakdown.vat13)}` : ''} | 20%: ${formatEur(analyticsData.vatBreakdown.vat20)}`}
             />
           </>
         ) : (

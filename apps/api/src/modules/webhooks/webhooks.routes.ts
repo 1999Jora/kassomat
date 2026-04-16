@@ -106,8 +106,8 @@ export async function webhooksRoutes(fastify: FastifyInstance): Promise<void> {
             const order = await lieferandoService.receiveOrder(
               tenantId,
               request.body,
-              // Pass the raw string for signature verification
               signature,
+              rawBody,
             );
 
             // Emit WebSocket event to tenant room
@@ -190,7 +190,8 @@ export async function webhooksRoutes(fastify: FastifyInstance): Promise<void> {
             // Wix webhooks wrap it in { data: { orderId, lineItems, ... } }.
             // Normalise both formats into the native format before passing to service.
             const body = request.body as Record<string, unknown>;
-            const order = await wixService.receiveOrder(tenantId, body, signature);
+            const rawBody = getRawBody(request);
+            const order = await wixService.receiveOrder(tenantId, body, signature, rawBody);
 
             const realtime = getRealtimeService(fastify);
             if (realtime) {

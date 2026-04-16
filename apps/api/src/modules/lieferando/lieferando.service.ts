@@ -76,6 +76,7 @@ export class LieferandoService {
     tenantId: string,
     webhookPayload: unknown,
     signature: string,
+    rawBody?: string,
   ): Promise<IncomingOrder> {
     // Load tenant config
     const tenant = await prisma.tenant.findUnique({
@@ -97,10 +98,9 @@ export class LieferandoService {
       throw new AppError(500, 'CONFIGURATION_ERROR', 'Lieferando webhook secret is not configured');
     }
 
-    // Serialize payload for signature verification
-    const rawPayload = typeof webhookPayload === 'string'
-      ? webhookPayload
-      : JSON.stringify(webhookPayload);
+    // Use the original raw body for signature verification (avoids re-serialisation mismatch)
+    const rawPayload = rawBody
+      ?? (typeof webhookPayload === 'string' ? webhookPayload : JSON.stringify(webhookPayload));
 
     if (!this.verifyWebhookSignature(rawPayload, signature, tenant.lieferandoWebhookSecret)) {
       throw new AppError(401, 'INVALID_SIGNATURE', 'Webhook signature verification failed');

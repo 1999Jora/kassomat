@@ -112,6 +112,7 @@ export class WixService {
     tenantId: string,
     webhookPayload: unknown,
     signature: string,
+    rawBody?: string,
   ): Promise<IncomingOrder> {
     const tenant = await prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -123,11 +124,10 @@ export class WixService {
       throw new AppError(403, 'INTEGRATION_DISABLED', 'Wix integration is not active for this tenant');
     }
 
-    if (tenant.wixWebhookSecret && signature) {
-      const rawPayload = typeof webhookPayload === 'string'
-        ? webhookPayload
-        : JSON.stringify(webhookPayload);
-      if (!this.verifyWebhookSignature(rawPayload, signature, tenant.wixWebhookSecret)) {
+    if (tenant.wixWebhookSecret) {
+      const rawPayload = rawBody
+        ?? (typeof webhookPayload === 'string' ? webhookPayload : JSON.stringify(webhookPayload));
+      if (!signature || !this.verifyWebhookSignature(rawPayload, signature, tenant.wixWebhookSecret)) {
         throw new AppError(401, 'INVALID_SIGNATURE', 'Webhook signature verification failed');
       }
     }

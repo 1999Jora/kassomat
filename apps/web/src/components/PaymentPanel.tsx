@@ -408,12 +408,14 @@ export default function PaymentPanel() {
 
       socket.on('payment:confirmed', (data: { transactionId?: string }) => {
         if (!data.transactionId || data.transactionId === transactionIdRef.current) {
+          stopCardMonitoring();
           handleCardConfirmed();
         }
       });
 
       socket.on('payment:declined', (data: { transactionId?: string }) => {
         if (!data.transactionId || data.transactionId === transactionIdRef.current) {
+          stopCardMonitoring();
           handleCardDeclined();
         }
       });
@@ -424,7 +426,10 @@ export default function PaymentPanel() {
       });
     }
 
-    // 2. Polling fallback — runs regardless of socket status
+    // 2. Polling fallback — starts immediately, but stopCardMonitoring()
+    //    is called by handleCardConfirmed/Declined so both paths are safe.
+    //    Socket + polling may both fire, but handleCardConfirmed checks
+    //    isSubmittingRef to prevent double execution.
     pollIntervalRef.current = setInterval(async () => {
       const currentTxId = transactionIdRef.current;
       if (!currentTxId) return;
@@ -466,9 +471,7 @@ export default function PaymentPanel() {
       const receiptId = lastReceiptIdRef.current;
       if (!receiptId) return;
       setStornoState('loading');
-      // Storno-Bon-Fenster VOR dem async call öffnen (Popup-Blocker!)
       const mode = getPrintMode();
-      const stornoWindow = mode === 'pdf' ? window.open('', '_blank') : null;
       cancelReceipt(receiptId)
         .then(async (stornoReceipt) => {
           setStornoState('done');
@@ -480,16 +483,14 @@ export default function PaymentPanel() {
             await waitForRksvSignature(stornoReceipt.id);
             if (mode === 'printer') {
               await printReceiptById(stornoReceipt.id);
-            } else if (mode === 'pdf' && stornoWindow) {
-              stornoWindow.location.href = getDigitalReceiptUrl(stornoReceipt.id);
+            } else if (mode === 'pdf') {
+              window.open(getDigitalReceiptUrl(stornoReceipt.id), '_blank', 'noopener');
             }
           } catch {
-            if (stornoWindow) stornoWindow.close();
             toast.error('Stornobeleg konnte nicht gedruckt werden');
           }
         })
         .catch(() => {
-          if (stornoWindow) stornoWindow.close();
           toast.error('Storno fehlgeschlagen');
           setStornoState('idle');
         });
@@ -532,6 +533,7 @@ export default function PaymentPanel() {
       setBillCounts({});
       setShowNumPad(false);
       setTip(0);
+      setPaymentMethod('cash');
       setDone(false);
       setSigned(false);
       setProcessing(false);

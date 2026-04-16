@@ -187,7 +187,7 @@ export class FinanzOnlineClient {
       Belegnummer: rksv.belegnummer,
       Belegdatum: receipt.createdAt.toISOString(),
       Signaturwert: rksv.signature,
-      Sig_Voriger_Beleg: rksv.previousReceiptHash,
+      Sig_Voriger_Beleg: rksv.sigVorigerBeleg ?? rksv.previousReceiptHash,
       Zertifikatsseriennummer: rksv.atCertificateSerial,
     };
 

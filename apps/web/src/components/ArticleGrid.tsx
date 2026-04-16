@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useAppStore } from '../store/useAppStore';
 import { formatCents } from '../lib/formatters';
 import { fetchProducts, fetchCategories } from '../lib/api';
-import { MOCK_CATEGORIES, MOCK_PRODUCTS } from '../lib/mockData';
 import { playKeyClick } from '../lib/sounds';
 import type { Product, Category } from '@kassomat/types';
 
@@ -63,11 +62,11 @@ export default function ArticleGrid() {
     staleTime: 60_000,
   });
 
-  // ── Offline / error fallback to mock data ────────────────────────────────
+  // ── Offline / error fallback ─────────────────────────────────────────────
   const resolvedProducts: Product[] =
-    productsError || !products ? MOCK_PRODUCTS : products;
+    productsError || !products ? [] : products;
   const resolvedCategories: Category[] =
-    categoriesError || !categories ? MOCK_CATEGORIES : categories;
+    categoriesError || !categories ? [] : categories;
 
   const isLoading = productsLoading || categoriesLoading;
 
@@ -146,6 +145,16 @@ export default function ArticleGrid() {
       <div className="flex-1 overflow-y-auto scrollbar-none px-3 pt-2.5 pb-2">
         {isLoading ? (
           <ProductGridSkeleton />
+        ) : productsError ? (
+          <div className="h-48 flex flex-col items-center justify-center text-red-400 gap-2">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-50">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <p className="text-sm">Artikel konnten nicht geladen werden</p>
+            <p className="text-xs text-white/30">Bitte Verbindung prüfen</p>
+          </div>
         ) : filtered.length === 0 ? (
           <div className="h-48 flex flex-col items-center justify-center text-[#6b7280] gap-2">
             <svg

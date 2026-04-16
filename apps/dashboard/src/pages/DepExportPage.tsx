@@ -90,7 +90,7 @@ export default function DepExportPage() {
     setResult(null);
 
     try {
-      const response = await api.get('/dep/export', {
+      const response = await api.get('/dep/export/range', {
         params: { from, to },
         responseType: 'blob',
       });
