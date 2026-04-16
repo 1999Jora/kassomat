@@ -94,10 +94,11 @@ function Toggle({
 
 // ─── Tab types ────────────────────────────────────────────────────────────────
 
-type Tab = 'general' | 'atrust' | 'fiskaltrust' | 'lieferando' | 'wix' | 'mypos' | 'mergeport' | 'printer' | 'bon-layout' | 'categories' | 'articles';
+type Tab = 'general' | 'tischplan' | 'atrust' | 'fiskaltrust' | 'lieferando' | 'wix' | 'mypos' | 'mergeport' | 'printer' | 'bon-layout' | 'categories' | 'articles';
 
-const TABS: Array<{ id: Tab; label: string }> = [
+const TABS_BASE: Array<{ id: Tab; label: string; gastroOnly?: boolean }> = [
   { id: 'general', label: 'Allgemein' },
+  { id: 'tischplan', label: 'Tischplan', gastroOnly: true },
   { id: 'atrust', label: 'A-Trust' },
   { id: 'fiskaltrust', label: 'fiskaltrust' },
   { id: 'lieferando', label: 'Lieferando' },
@@ -127,6 +128,7 @@ function GeneralTab({ tenant }: { tenant: Tenant }) {
   const [city, setCity] = useState(tenant.settings.city ?? '');
   const [vatNumber, setVatNumber] = useState(tenant.settings.vatNumber ?? '');
   const [receiptFooter, setReceiptFooter] = useState(tenant.settings.receiptFooter ?? '');
+  const [mode, setMode] = useState<'retail' | 'gastro'>(tenant.mode ?? 'retail');
 
   const mutation = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.patch('/tenant', body),
@@ -141,6 +143,7 @@ function GeneralTab({ tenant }: { tenant: Tenant }) {
     e.preventDefault();
     mutation.mutate({
       name,
+      mode,
       driverCode: driverCode || null,
       address: address || null,
       city: city || null,
@@ -153,6 +156,26 @@ function GeneralTab({ tenant }: { tenant: Tenant }) {
     <form onSubmit={handleSubmit} className="space-y-5">
       <Field label="Firmenname">
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Mein Betrieb" />
+      </Field>
+
+      <Field label="Betriebsmodus" hint="Gastro aktiviert Tischverwaltung und Küchendrucker">
+        <div className="flex gap-2">
+          {(['retail', 'gastro'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={clsx(
+                'flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors',
+                mode === m
+                  ? 'border-[#00e87a] bg-[#00e87a]/10 text-[#00e87a]'
+                  : 'border-white/10 text-white/50 hover:text-white/70',
+              )}
+            >
+              {m === 'retail' ? 'Verkauf / Lieferservice' : 'Gastro (Restaurant)'}
+            </button>
+          ))}
+        </div>
       </Field>
 
       <Field label="Fahrer-Code" hint="Code den Fahrer eingeben um sich zu verbinden (z.B. pizza123)">
@@ -1116,7 +1139,7 @@ function MyPOSTab({ settings }: { settings: TenantSettings }) {
 
 // ─── Printer tab ──────────────────────────────────────────────────────────────
 
-function PrinterTab({ settings }: { settings: TenantSettings }) {
+function PrinterTab({ settings, isGastro }: { settings: TenantSettings; isGastro: boolean }) {
   const qc = useQueryClient();
 
   type PrinterType = 'USB' | 'Network' | 'File';
@@ -1126,6 +1149,8 @@ function PrinterTab({ settings }: { settings: TenantSettings }) {
   const [host, setHost] = useState(settings.printerIp ?? '');
   const [port, setPort] = useState(settings.printerPort?.toString() ?? '9100');
   const [printMode, setPrintModeState] = useState<PrintMode>(getPrintMode());
+  const [kitchenIp, setKitchenIp] = useState(settings.kitchenPrinterIp ?? '');
+  const [kitchenPort, setKitchenPort] = useState(settings.kitchenPrinterPort?.toString() ?? '9100');
 
   function handlePrintModeChange(mode: PrintMode) {
     setPrintModeState(mode);
@@ -1144,10 +1169,15 @@ function PrinterTab({ settings }: { settings: TenantSettings }) {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    mutation.mutate({
+    const body: Record<string, unknown> = {
       printerIp: printerType === 'Network' ? host || null : null,
       printerPort: printerType === 'Network' ? (parseInt(port, 10) || 9100) : null,
-    });
+    };
+    if (isGastro) {
+      body.kitchenPrinterIp = kitchenIp || null;
+      body.kitchenPrinterPort = kitchenIp ? (parseInt(kitchenPort, 10) || 9100) : null;
+    }
+    mutation.mutate(body);
   }
 
   const printerTypes: PrinterType[] = ['USB', 'Network', 'File'];
@@ -1252,6 +1282,32 @@ function PrinterTab({ settings }: { settings: TenantSettings }) {
           Im Datei-Modus werden Bons als PDF/Text-Dateien gespeichert. Nur für
           Testumgebungen geeignet.
         </div>
+      )}
+
+      {isGastro && (
+        <>
+          <div className="border-t border-white/[0.06] pt-5" />
+          <p className="text-xs font-semibold text-white/40 uppercase tracking-wider">Küchendrucker (Gastro)</p>
+          <Field label="Küchendrucker IP" hint="Netzwerk-Drucker in der Küche für Bestellzettel">
+            <Input
+              value={kitchenIp}
+              onChange={(e) => setKitchenIp(e.target.value)}
+              placeholder="192.168.1.101"
+            />
+          </Field>
+          {kitchenIp && (
+            <Field label="Küchendrucker Port">
+              <Input
+                value={kitchenPort}
+                onChange={(e) => setKitchenPort(e.target.value)}
+                placeholder="9100"
+                type="number"
+                min={1}
+                max={65535}
+              />
+            </Field>
+          )}
+        </>
       )}
 
       <div className="pt-2">
@@ -1961,6 +2017,252 @@ function BonLayoutTab({ tenant }: { tenant: Tenant }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
+// ─── Tischplan tab (Gastro) ───────────────────────────────────────────────────
+
+interface TableDraft {
+  id?: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  shape: 'rect' | 'round';
+  seats: number;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+function TischplanTab() {
+  const qc = useQueryClient();
+
+  const { data: tables, isLoading } = useQuery<TableDraft[]>({
+    queryKey: ['tables'],
+    queryFn: async () => {
+      const { data } = await api.get<{ success: true; data: TableDraft[] }>('/tables');
+      return data.data;
+    },
+  });
+
+  const [items, setItems] = useState<TableDraft[]>([]);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [dragging, setDragging] = useState<{ idx: number; startX: number; startY: number; origX: number; origY: number } | null>(null);
+
+  // Sync loaded tables into local state
+  const loaded = tables ?? [];
+  const [synced, setSynced] = useState(false);
+  if (loaded.length > 0 && !synced) {
+    setItems(loaded);
+    setSynced(true);
+  }
+
+  const mutation = useMutation({
+    mutationFn: (body: { tables: TableDraft[] }) => api.put('/tables', body),
+    onSuccess: () => {
+      toast.success('Tischplan gespeichert');
+      void qc.invalidateQueries({ queryKey: ['tables'] });
+    },
+    onError: () => toast.error('Fehler beim Speichern'),
+  });
+
+  function addTable() {
+    setItems((prev) => [
+      ...prev,
+      {
+        label: `Tisch ${prev.length + 1}`,
+        x: 40 + Math.random() * 20,
+        y: 40 + Math.random() * 20,
+        width: 12,
+        height: 12,
+        shape: 'rect',
+        seats: 4,
+        sortOrder: prev.length,
+        isActive: true,
+      },
+    ]);
+  }
+
+  function updateSelected(patch: Partial<TableDraft>) {
+    if (selected === null) return;
+    setItems((prev) => prev.map((t, i) => (i === selected ? { ...t, ...patch } : t)));
+  }
+
+  function removeSelected() {
+    if (selected === null) return;
+    setItems((prev) => prev.filter((_, i) => i !== selected));
+    setSelected(null);
+  }
+
+  function handlePointerDown(e: React.PointerEvent, idx: number) {
+    e.preventDefault();
+    setSelected(idx);
+    const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+    setDragging({
+      idx,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: items[idx]!.x,
+      origY: items[idx]!.y,
+    });
+
+    function onMove(ev: PointerEvent) {
+      if (!dragging && !rect) return;
+      const dx = ((ev.clientX - e.clientX) / rect.width) * 100;
+      const dy = ((ev.clientY - e.clientY) / rect.height) * 100;
+      const item = items[idx]!;
+      setItems((prev) =>
+        prev.map((t, i) =>
+          i === idx
+            ? { ...t, x: Math.max(0, Math.min(100 - t.width, item.x + dx)), y: Math.max(0, Math.min(100 - t.height, item.y + dy)) }
+            : t,
+        ),
+      );
+    }
+
+    function onUp() {
+      setDragging(null);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    }
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  if (isLoading) {
+    return <div className="text-white/40 text-sm py-8 text-center">Tischplan wird geladen...</div>;
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-white/60">Tische per Drag &amp; Drop platzieren</p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={addTable}
+            className="text-xs bg-[#00e87a]/10 hover:bg-[#00e87a]/20 text-[#00e87a] border border-[#00e87a]/20 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            + Tisch
+          </button>
+          <button
+            type="button"
+            onClick={() => mutation.mutate({ tables: items })}
+            disabled={mutation.isPending}
+            className="text-xs bg-[#00e87a] text-[#080a0c] font-semibold px-4 py-1.5 rounded-lg hover:bg-[#00d46e] transition-colors disabled:opacity-50"
+          >
+            {mutation.isPending ? '...' : 'Speichern'}
+          </button>
+        </div>
+      </div>
+
+      {/* Canvas */}
+      <div
+        className="relative bg-[#080a0c] border border-white/10 rounded-xl overflow-hidden"
+        style={{ aspectRatio: '16/10' }}
+        onClick={() => setSelected(null)}
+      >
+        {/* Grid lines */}
+        <div className="absolute inset-0 opacity-[0.03]" style={{
+          backgroundImage: 'linear-gradient(to right, white 1px, transparent 1px), linear-gradient(to bottom, white 1px, transparent 1px)',
+          backgroundSize: '10% 10%',
+        }} />
+
+        {items.map((table, idx) => {
+          const isSelected = selected === idx;
+          return (
+            <div
+              key={table.id ?? `new-${idx}`}
+              onPointerDown={(e) => { e.stopPropagation(); handlePointerDown(e, idx); }}
+              onClick={(e) => { e.stopPropagation(); setSelected(idx); }}
+              className={clsx(
+                'absolute flex flex-col items-center justify-center cursor-grab select-none transition-shadow touch-none',
+                table.shape === 'round' ? 'rounded-full' : 'rounded-lg',
+                isSelected
+                  ? 'ring-2 ring-[#00e87a] shadow-lg shadow-[#00e87a]/20 z-10'
+                  : 'hover:ring-1 hover:ring-white/30',
+              )}
+              style={{
+                left: `${table.x}%`,
+                top: `${table.y}%`,
+                width: `${table.width}%`,
+                height: `${table.height}%`,
+                backgroundColor: isSelected ? 'rgba(0,232,122,0.15)' : 'rgba(255,255,255,0.08)',
+                border: `1px solid ${isSelected ? 'rgba(0,232,122,0.4)' : 'rgba(255,255,255,0.12)'}`,
+              }}
+            >
+              <span className="text-[10px] font-medium text-white/80 leading-none">{table.label}</span>
+              <span className="text-[8px] text-white/40 mt-0.5">{table.seats} Pl.</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Selected table properties */}
+      {selected !== null && items[selected] && (
+        <div className="bg-[#080a0c] border border-white/10 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-white/40 uppercase tracking-wider">Tisch bearbeiten</p>
+            <button
+              type="button"
+              onClick={removeSelected}
+              className="text-xs text-red-400 hover:text-red-300 transition-colors"
+            >
+              Löschen
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Bezeichnung">
+              <Input
+                value={items[selected]!.label}
+                onChange={(e) => updateSelected({ label: e.target.value })}
+                placeholder="Tisch 1"
+              />
+            </Field>
+            <Field label="Sitzplätze">
+              <Input
+                type="number"
+                min={1}
+                max={50}
+                value={items[selected]!.seats}
+                onChange={(e) => updateSelected({ seats: parseInt(e.target.value, 10) || 4 })}
+              />
+            </Field>
+          </div>
+
+          <Field label="Form">
+            <div className="flex gap-2">
+              {(['rect', 'round'] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => updateSelected({ shape: s })}
+                  className={clsx(
+                    'flex-1 py-2 rounded-lg text-xs font-medium border transition-colors',
+                    items[selected]!.shape === s
+                      ? 'border-[#00e87a] bg-[#00e87a]/10 text-[#00e87a]'
+                      : 'border-white/10 text-white/50',
+                  )}
+                >
+                  {s === 'rect' ? 'Eckig' : 'Rund'}
+                </button>
+              ))}
+            </div>
+          </Field>
+        </div>
+      )}
+
+      {items.length === 0 && (
+        <div className="text-center text-white/30 text-sm py-8">
+          Noch keine Tische angelegt. Klicke &quot;+ Tisch&quot; um zu beginnen.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main ────────────────────────────────────────────────────────────────────
+
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('general');
 
@@ -1991,13 +2293,16 @@ export default function SettingsPage() {
     );
   }
 
+  const isGastro = tenant.mode === 'gastro';
+  const tabs = TABS_BASE.filter((t) => !t.gastroOnly || isGastro);
+
   return (
     <div className="p-6">
       <h1 className="text-white font-bold text-2xl mb-8">Einstellungen</h1>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-[#0e1115] border border-white/5 rounded-xl p-1 mb-8 overflow-x-auto">
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -2016,13 +2321,14 @@ export default function SettingsPage() {
       {/* Tab content */}
       <div className="bg-[#0e1115] border border-white/5 rounded-xl p-6">
         {activeTab === 'general' && <GeneralTab tenant={tenant} />}
+        {activeTab === 'tischplan' && <TischplanTab />}
         {activeTab === 'atrust' && <ATrustTab settings={tenant.settings} />}
         {activeTab === 'fiskaltrust' && <FiskaltrustTab settings={tenant.settings} />}
         {activeTab === 'lieferando' && <LieferandoTab settings={tenant.settings} />}
         {activeTab === 'wix' && <WixTab settings={tenant.settings} />}
         {activeTab === 'mergeport' && <MergeportTab settings={tenant.settings} />}
         {activeTab === 'mypos' && <MyPOSTab settings={tenant.settings} />}
-        {activeTab === 'printer' && <PrinterTab settings={tenant.settings} />}
+        {activeTab === 'printer' && <PrinterTab settings={tenant.settings} isGastro={isGastro} />}
         {activeTab === 'bon-layout' && <BonLayoutTab tenant={tenant} />}
         {activeTab === 'categories' && <CategoriesTab />}
         {activeTab === 'articles' && <ArticlesTab />}

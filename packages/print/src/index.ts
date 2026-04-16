@@ -13,6 +13,8 @@
 
 export { EscPosBuilder } from './escpos';
 export { buildReceiptBuffer, printReceipt } from './receipt-printer';
+export { buildKitchenOrderBuffer, printKitchenOrder } from './kitchen-order';
+export type { KitchenOrder, KitchenOrderItem } from './kitchen-order';
 export { generateDigitalReceiptHTML, generateDigitalReceiptURL } from './digital-receipt';
 export type {
   PrinterConfig,

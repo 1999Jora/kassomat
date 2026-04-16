@@ -24,12 +24,14 @@ export interface OpenTab {
   externalOrderId: string | null;
   orderType: 'dine_in' | 'delivery';
   deliveryInfo: DeliveryInfo;
+  tableId: string | null;
+  tableLabel: string | null;
 }
 
 const MAX_TABS = 8;
 let tabCounter = 1;
 
-function createEmptyTab(label?: string): OpenTab {
+function createEmptyTab(label?: string, tableId?: string | null): OpenTab {
   const id = `tab-${tabCounter++}`;
   return {
     id,
@@ -39,6 +41,8 @@ function createEmptyTab(label?: string): OpenTab {
     externalOrderId: null,
     orderType: 'dine_in',
     deliveryInfo: { name: '', street: '', city: '' },
+    tableId: tableId ?? null,
+    tableLabel: tableId ? (label ?? null) : null,
   };
 }
 
@@ -78,6 +82,9 @@ interface AppState {
   closeTab: (id: string) => void;
   renameTab: (id: string, label: string) => void;
 
+  // Gastro table support
+  openTable: (tableId: string, tableLabel: string) => void;
+
   // Flat cart state (derived from active tab — backwards-compatible)
   cartItems: CartItem[];
   cartChannel: 'direct' | 'lieferando' | 'wix';
@@ -116,8 +123,8 @@ interface AppState {
   setPluSearch: (s: string) => void;
 
   // Mobile tab navigation
-  mobileTab: 'articles' | 'cart' | 'payment';
-  setMobileTab: (tab: 'articles' | 'cart' | 'payment') => void;
+  mobileTab: 'articles' | 'cart' | 'payment' | 'tables';
+  setMobileTab: (tab: 'articles' | 'cart' | 'payment' | 'tables') => void;
 
   // Order notification panel
   showOrderPanel: boolean;
@@ -151,7 +158,7 @@ export const useAppStore = create<AppState>((set) => ({
   closeTab: (id) => set((state) => {
     if (state.tabs.length <= 1) {
       // Last tab — just clear it
-      const tab = { ...state.tabs[0]!, items: [], externalOrderId: null, channel: 'direct' as const, orderType: 'dine_in' as const, deliveryInfo: emptyDelivery };
+      const tab = { ...state.tabs[0]!, items: [], externalOrderId: null, channel: 'direct' as const, orderType: 'dine_in' as const, deliveryInfo: emptyDelivery, tableId: null, tableLabel: null };
       const tabs = [tab];
       return { tabs, ...deriveCart(tabs, tab.id) };
     }
@@ -167,12 +174,32 @@ export const useAppStore = create<AppState>((set) => ({
     tabs: state.tabs.map((t) => (t.id === id ? { ...t, label } : t)),
   })),
 
+  // ── Gastro: open/switch to table ────────────────────────────────────────────
+  openTable: (tableId, tableLabel) => set((state) => {
+    // Check if a tab for this table already exists
+    const existing = state.tabs.find((t) => t.tableId === tableId);
+    if (existing) {
+      return { activeTabId: existing.id, ...deriveCart(state.tabs, existing.id) };
+    }
+    // Create new tab for this table
+    if (state.tabs.length >= MAX_TABS) return state;
+    const tab = createEmptyTab(tableLabel, tableId);
+    const tabs = [...state.tabs, tab];
+    return { tabs, activeTabId: tab.id, ...deriveCart(tabs, tab.id) };
+  }),
+
   // ── Cart actions (operate on active tab) ──────────────────────────────────
   setOrderType: (type) => set((state) => setActiveTab(state, () => ({ orderType: type }))),
 
-  setDeliveryInfo: (info) => set((state) => setActiveTab(state, (tab) => ({
-    deliveryInfo: { ...tab.deliveryInfo, ...info },
-  }))),
+  setDeliveryInfo: (info) => set((state) => setActiveTab(state, (tab) => {
+    const newDelivery = { ...tab.deliveryInfo, ...info };
+    // Auto-switch orderType when delivery address is filled/cleared
+    const hasAddress = newDelivery.street?.trim();
+    return {
+      deliveryInfo: newDelivery,
+      orderType: hasAddress ? 'delivery' : 'dine_in',
+    };
+  })),
 
   addToCart: (item) =>
     set((state) => setActiveTab(state, (tab) => {
@@ -207,6 +234,8 @@ export const useAppStore = create<AppState>((set) => ({
       channel: 'direct' as const,
       orderType: 'dine_in' as const,
       deliveryInfo: emptyDelivery,
+      tableId: null,
+      tableLabel: null,
     }))),
 
   // ── Payment ───────────────────────────────────────────────────────────────

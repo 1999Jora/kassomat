@@ -1,16 +1,30 @@
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import Header from '../components/Header';
 import ArticleGrid from '../components/ArticleGrid';
+import TableView from '../components/TableView';
 import Cart from '../components/Cart';
 import PaymentPanel from '../components/PaymentPanel';
 import OrderNotification from '../components/OrderNotification';
 import { useAppStore } from '../store/useAppStore';
 import { initAudio } from '../lib/sounds';
+import api from '../lib/api';
+import type { Tenant } from '@kassomat/types';
 
 export default function POSLayout() {
   const { pendingOrders, cartItems, mobileTab, setMobileTab } = useAppStore();
   const [ordersOpen, setOrdersOpen] = useState(false);
+
+  const { data: tenant } = useQuery<Tenant>({
+    queryKey: ['tenant'],
+    queryFn: async () => {
+      const { data } = await api.get<{ success: true; data: Tenant }>('/tenant');
+      return data.data;
+    },
+    staleTime: 5 * 60_000,
+  });
+  const isGastro = tenant?.mode === 'gastro';
 
   // AudioContext erst nach erster User-Geste entsperren (Browser-Autoplay-Policy)
   useEffect(() => {
@@ -30,8 +44,15 @@ export default function POSLayout() {
     <div className="h-screen bg-[#080a0c] text-white flex flex-col overflow-hidden font-mono">
       <Header onOrdersClick={() => setOrdersOpen((o) => !o)} />
 
-      {/* Desktop: 3 columns | Tablet: Articles + right panel (Cart+Payment stacked) | Mobile: tabs */}
+      {/* Desktop: 3-4 columns | Tablet: Articles + right panel (Cart+Payment stacked) | Mobile: tabs */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Gastro: Table view — left column on desktop, own mobile tab */}
+        {isGastro && (
+          <div className={`${mobileTab === 'articles' ? 'hidden' : 'hidden'} md:flex lg:w-[220px] xl:w-[260px] border-r border-white/[0.06] overflow-hidden flex-col shrink-0`}>
+            <TableView />
+          </div>
+        )}
+
         {/* Articles - always visible on md+, on mobile only when tab=articles */}
         <div className={`${mobileTab === 'articles' ? 'flex' : 'hidden'} md:flex flex-1 min-w-0 border-r border-white/[0.06] overflow-hidden flex-col`}>
           <ArticleGrid />
@@ -59,10 +80,27 @@ export default function POSLayout() {
         </div>
       </div>
 
+      {/* Mobile: Tables tab (Gastro) */}
+      {isGastro && (
+        <div className={`${mobileTab === 'tables' ? 'flex' : 'hidden'} md:hidden w-full overflow-hidden flex-col`}>
+          <TableView />
+        </div>
+      )}
+
       {/* Mobile bottom nav */}
       <div className="md:hidden border-t border-white/[0.06] bg-[#0e1115] flex shrink-0">
         {(
           [
+            ...(isGastro ? [{
+              id: 'tables' as const,
+              label: 'Tische',
+              icon: (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="8" width="18" height="10" rx="1" />
+                  <path d="M5 18v3M19 18v3M7 8V6a1 1 0 011-1h8a1 1 0 011 1v2" />
+                </svg>
+              ),
+            }] : []),
             {
               id: 'articles' as const,
               label: 'Artikel',
@@ -96,7 +134,7 @@ export default function POSLayout() {
                 </svg>
               ),
             },
-          ] as Array<{ id: 'articles' | 'cart' | 'payment'; label: string; icon: React.ReactNode }>
+          ] as Array<{ id: 'articles' | 'cart' | 'payment' | 'tables'; label: string; icon: React.ReactNode }>
         ).map((tab) => (
           <button
             key={tab.id}

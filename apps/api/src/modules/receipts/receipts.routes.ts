@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { ReceiptsService } from './receipts.service';
-import { printReceipt, generateDigitalReceiptHTML } from '@kassomat/print';
-import type { ReceiptData, TenantInfo, PrinterConfig } from '@kassomat/print';
+import { printReceipt, printKitchenOrder, generateDigitalReceiptHTML } from '@kassomat/print';
+import type { ReceiptData, TenantInfo, PrinterConfig, KitchenOrder } from '@kassomat/print';
+import { prisma } from '../../lib/prisma';
 
 const createReceiptSchema = z.object({
   cashRegisterId: z.string().default('KASSE-01'),
@@ -89,6 +90,43 @@ export async function receiptsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post('/receipts', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const body = createReceiptSchema.parse(request.body);
     const receipt = await service.create(request.tenantId, request.jwtPayload.sub, body);
+
+    // Fire-and-forget: send kitchen order ticket if Gastro mode + kitchen printer configured
+    setImmediate(async () => {
+      try {
+        const tenant = await prisma.tenant.findUnique({
+          where: { id: request.tenantId },
+          select: { mode: true, kitchenPrinterIp: true, kitchenPrinterPort: true },
+        });
+        if (tenant?.mode === 'gastro' && tenant.kitchenPrinterIp) {
+          const receiptWithItems = await prisma.receipt.findUnique({
+            where: { id: receipt.id },
+            include: { items: true },
+          });
+          if (receiptWithItems && receiptWithItems.items.length > 0) {
+            const kitchenOrder: KitchenOrder = {
+              tableLabel: body.channel === 'direct'
+                ? `Bon #${receiptWithItems.receiptNumber}`
+                : `${body.channel.toUpperCase()} ${body.externalOrderId ?? ''}`,
+              timestamp: new Date(),
+              orderType: 'dine_in',
+              items: receiptWithItems.items.map((item) => ({
+                name: item.productName,
+                quantity: item.quantity,
+              })),
+            };
+            await printKitchenOrder(kitchenOrder, {
+              type: 'network',
+              host: tenant.kitchenPrinterIp,
+              port: tenant.kitchenPrinterPort ?? 9100,
+            });
+          }
+        }
+      } catch (err) {
+        fastify.log.warn({ err }, 'Kitchen printer failed (non-critical)');
+      }
+    });
+
     return reply.code(201).send({ success: true, data: receipt });
   });
 

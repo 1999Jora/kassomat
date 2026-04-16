@@ -16,6 +16,9 @@ export type TenantPlan = 'starter' | 'pro' | 'business';
 /** Aktivitätsstatus des Tenants */
 export type TenantStatus = 'active' | 'suspended' | 'trial';
 
+/** Betriebsmodus: Verkauf/Lieferservice oder Gastro (Restaurant) */
+export type TenantMode = 'retail' | 'gastro';
+
 /** Ein Kassomat-Tenant (Restaurant, Spätis, Kiosk etc.) */
 export interface Tenant {
   /** UUID */
@@ -28,6 +31,8 @@ export interface Tenant {
   driverCode: string | null;
   plan: TenantPlan;
   status: TenantStatus;
+  /** Betriebsmodus */
+  mode: TenantMode;
   /** Null wenn kein Trial oder Trial abgelaufen */
   trialEndsAt: Date | null;
   createdAt: Date;
@@ -66,6 +71,10 @@ export interface TenantSettings {
   mypos: MyPOSConfig | null;
   /** fiskaltrust RKSV Signatur-Service Konfiguration (Demo/Sandbox) */
   fiskaltrust: FiskaltrustConfig | null;
+  /** Küchendrucker IP (nur Gastro-Modus) */
+  kitchenPrinterIp: string | null;
+  /** Küchendrucker Port (nur Gastro-Modus) */
+  kitchenPrinterPort: number | null;
 }
 
 // ============================================================
@@ -619,6 +628,30 @@ export interface DriverGpsEvent {
   lng: number;
   heading?: number;
   speed?: number;
+}
+
+// ============================================================
+// TISCHE (Gastro-Modus)
+// ============================================================
+
+/** Ein Tisch im Gastro-Tischplan */
+export interface TableLayout {
+  id: string;
+  label: string;
+  /** X-Position in Prozent (0-100) */
+  x: number;
+  /** Y-Position in Prozent (0-100) */
+  y: number;
+  /** Breite in Prozent */
+  width: number;
+  /** Höhe in Prozent */
+  height: number;
+  /** Form: "rect" oder "round" */
+  shape: 'rect' | 'round';
+  /** Anzahl Sitzplätze */
+  seats: number;
+  sortOrder: number;
+  isActive: boolean;
 }
 
 // ============================================================

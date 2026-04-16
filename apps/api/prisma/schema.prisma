@@ -149,6 +149,13 @@ model Tenant {
   printerPort     Int?
   rksvEnabled     Boolean @default(true)
 
+  // Betriebsmodus: "retail" (Verkauf/Lieferservice) oder "gastro" (Restaurant)
+  mode            String  @default("retail") // "retail" | "gastro"
+
+  // Küchendrucker (nur Gastro-Modus)
+  kitchenPrinterIp   String?
+  kitchenPrinterPort Int?
+
   // A-Trust Config (API Key verschlüsselt)
   atrustCertificateSerial String?
   atrustApiKey_encrypted  String?
@@ -206,6 +213,7 @@ model Tenant {
   drivers       Driver[]
   deliveries    Delivery[]
   deviceTokens  DeviceToken[]
+  tables        Table[]
 
   @@index([slug])
   @@index([status])
@@ -614,4 +622,28 @@ model DeviceToken {
 
   @@index([tenantId])
   @@index([userId])
+}
+
+// ============================================================
+// TISCHE (Gastro-Modus Tischplan)
+// ============================================================
+
+model Table {
+  id        String   @id @default(uuid())
+  tenantId  String
+  label     String   // "Tisch 1", "Bar", "Terrasse 3"
+  x         Float    // Position im Tischplan (0-100 %)
+  y         Float
+  width     Float    @default(10)
+  height    Float    @default(10)
+  shape     String   @default("rect") // "rect" | "round"
+  seats     Int      @default(4)
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
 }

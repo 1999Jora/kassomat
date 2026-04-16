@@ -9,6 +9,8 @@
 type TenantPlan = 'starter' | 'pro' | 'business';
 /** Aktivitätsstatus des Tenants */
 type TenantStatus = 'active' | 'suspended' | 'trial';
+/** Betriebsmodus: Verkauf/Lieferservice oder Gastro (Restaurant) */
+type TenantMode = 'retail' | 'gastro';
 /** Ein Kassomat-Tenant (Restaurant, Spätis, Kiosk etc.) */
 interface Tenant {
     /** UUID */
@@ -21,6 +23,8 @@ interface Tenant {
     driverCode: string | null;
     plan: TenantPlan;
     status: TenantStatus;
+    /** Betriebsmodus */
+    mode: TenantMode;
     /** Null wenn kein Trial oder Trial abgelaufen */
     trialEndsAt: Date | null;
     createdAt: Date;
@@ -58,6 +62,10 @@ interface TenantSettings {
     mypos: MyPOSConfig | null;
     /** fiskaltrust RKSV Signatur-Service Konfiguration (Demo/Sandbox) */
     fiskaltrust: FiskaltrustConfig | null;
+    /** Küchendrucker IP (nur Gastro-Modus) */
+    kitchenPrinterIp: string | null;
+    /** Küchendrucker Port (nur Gastro-Modus) */
+    kitchenPrinterPort: number | null;
 }
 /** Benutzerrollen im System */
 type UserRole = 'owner' | 'admin' | 'cashier';
@@ -492,6 +500,25 @@ interface DriverGpsEvent {
     heading?: number;
     speed?: number;
 }
+/** Ein Tisch im Gastro-Tischplan */
+interface TableLayout {
+    id: string;
+    label: string;
+    /** X-Position in Prozent (0-100) */
+    x: number;
+    /** Y-Position in Prozent (0-100) */
+    y: number;
+    /** Breite in Prozent */
+    width: number;
+    /** Höhe in Prozent */
+    height: number;
+    /** Form: "rect" oder "round" */
+    shape: 'rect' | 'round';
+    /** Anzahl Sitzplätze */
+    seats: number;
+    sortOrder: number;
+    isActive: boolean;
+}
 /** Druckerverbindungstyp */
 type PrinterConnectionType = 'network' | 'usb';
 /** Druckerstatus */
@@ -513,4 +540,4 @@ interface PrintJob {
     errorMessage: string | null;
 }
 
-export type { ATrustConfig, AnalyticsData, ApiError, ApiSuccess, AuthResponse, Category, DEPBelegeGruppe, DEPEntry, DEPExport, DailyClosing, Delivery, DeliveryAddress, DeliveryPaymentMethod, Driver, DriverGpsEvent, FiskaltrustConfig, IncomingOrder, IncomingOrderItem, IncomingOrderStatus, JWTPayload, LieferandoConfig, MyPOSConfig, OrderCustomer, PaginatedResponse, Payment, PaymentMethod, PrintJob, PrinterConnectionType, PrinterStatus, Product, PublicUser, RKSVData, Receipt, ReceiptItem, ReceiptStatus, ReceiptTotals, ReceiptType, SalesChannel, Shift, Tenant, TenantPlan, TenantSettings, TenantStatus, User, UserRole, VatRate, WebSocketEvent, WebSocketEventType, WixConfig };
+export type { ATrustConfig, AnalyticsData, ApiError, ApiSuccess, AuthResponse, Category, DEPBelegeGruppe, DEPEntry, DEPExport, DailyClosing, Delivery, DeliveryAddress, DeliveryPaymentMethod, Driver, DriverGpsEvent, FiskaltrustConfig, IncomingOrder, IncomingOrderItem, IncomingOrderStatus, JWTPayload, LieferandoConfig, MyPOSConfig, OrderCustomer, PaginatedResponse, Payment, PaymentMethod, PrintJob, PrinterConnectionType, PrinterStatus, Product, PublicUser, RKSVData, Receipt, ReceiptItem, ReceiptStatus, ReceiptTotals, ReceiptType, SalesChannel, Shift, TableLayout, Tenant, TenantMode, TenantPlan, TenantSettings, TenantStatus, User, UserRole, VatRate, WebSocketEvent, WebSocketEventType, WixConfig };

@@ -28,6 +28,9 @@ export interface UpdateTenantInput {
   printerPort?: number | null;
   vatNumber?: string | null;
   rksvEnabled?: boolean;
+  mode?: 'retail' | 'gastro';
+  kitchenPrinterIp?: string | null;
+  kitchenPrinterPort?: number | null;
   atrust?: {
     certificateSerial?: string;
     apiKey: string;
@@ -129,6 +132,9 @@ export class TenantService {
     if (input.printerPort !== undefined) updateData['printerPort'] = input.printerPort;
     if (input.vatNumber !== undefined) updateData['vatNumber'] = input.vatNumber;
     if (input.rksvEnabled !== undefined) updateData['rksvEnabled'] = input.rksvEnabled;
+    if (input.mode !== undefined) updateData['mode'] = input.mode;
+    if (input.kitchenPrinterIp !== undefined) updateData['kitchenPrinterIp'] = input.kitchenPrinterIp;
+    if (input.kitchenPrinterPort !== undefined) updateData['kitchenPrinterPort'] = input.kitchenPrinterPort;
 
     if (input.atrust !== undefined) {
       if (input.atrust === null) {
@@ -253,6 +259,7 @@ export class TenantService {
       status: tenant.status,
       trialEndsAt: tenant.trialEndsAt,
       createdAt: tenant.createdAt,
+      mode: tenant.mode as 'retail' | 'gastro',
       driverCode: tenant.driverCode ?? null,
       settings: {
         currency: tenant.currency,
@@ -314,6 +321,8 @@ export class TenantService {
               environment: (tenant.fiskaltrustEnvironment ?? 'sandbox') as 'sandbox' | 'production',
             }
           : null,
+        kitchenPrinterIp: tenant.kitchenPrinterIp ?? null,
+        kitchenPrinterPort: tenant.kitchenPrinterPort ?? null,
       },
     };
   }

@@ -29,6 +29,9 @@ const updateSchema = z.object({
   printerPort: z.number().int().min(1).max(65535).nullable().optional(),
   vatNumber: vatNumberSchema.nullable().optional(),
   rksvEnabled: z.boolean().optional(),
+  mode: z.enum(['retail', 'gastro']).optional(),
+  kitchenPrinterIp: z.string().nullable().optional(),
+  kitchenPrinterPort: z.number().int().min(1).max(65535).nullable().optional(),
   atrust: z.object({
     certificateSerial: z.string().optional(),
     apiKey: z.string().min(1),
